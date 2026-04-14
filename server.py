@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""
+Jobr.dk – Lokal server
+• /api/jobs?offset=N     → proxy til Jobnet.dk's API
+• /api/analyze-cv        → AI-analyse via OpenAI eller Anthropic
+• /api/status            → server + AI info
+Start: python3 server.py
+"""
+
+import subprocess, sys, os, json, time, webbrowser, traceback, re, warnings
+from pathlib import Path
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+from threading import Thread
+from urllib.parse import parse_qs, urlparse
+
+warnings.filterwarnings("ignore")
+
+# Railway sætter PORT automatisk – lokalt bruges 8080
+PORT = int(os.environ.get("PORT", 8080))
+DIR  = Path(__file__).resolve().parent
+
+# Tillad requests fra Vercel-frontend og localhost
+ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://localhost:3000",
+    os.environ.get("FRONTEND_URL", ""),   # sæt til https://jobr.vercel.app på Railway
+    "https://jobr.dk",
+    "https://www.jobr.dk",
+]
+
+
+# ─── Installer pakker stille (ingen --break-system-packages) ─────────────────
+
+def try_install(pkg):
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", pkg, "-q"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return True
+    except Exception:
+        return False
+
+
+def ensure_requests():
+    try:
+        import requests
+        return True
+    except ImportError:
+        print("📦  Installerer requests…")
+        return try_install("requests")
+
+
+# ─── AI setup ────────────────────────────────────────────────────────────────
+
+def setup_ai():
+    openai_key    = os.environ.get("OPENAI_API_KEY", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if openai_key:
+        try:
+            import openai
+        except ImportError:
+            print("📦  Installerer openai…")
+            try_install("openai")
+        try:
+            import openai
+            return "openai", openai.OpenAI(api_key=openai_key), None
+        except Exception as e:
+            return None, None, f"OpenAI fejl: {e}"
+
+    if anthropic_key:
+        try:
+            import anthropic
+        except ImportError:
+            print("📦  Installerer anthropic…")
+            try_install("anthropic")
+        try:
+            import anthropic
+            return "anthropic", anthropic.Anthropic(api_key=anthropic_key), None
+        except Exception as e:
+            return None, None, f"Anthropic fejl: {e}"
+
+    return None, None, "Ingen API-nøgle. Sæt OPENAI_API_KEY eller ANTHROPIC_API_KEY"
+
+
+# ─── Jobnet proxy ─────────────────────────────────────────────────────────────
+
+JOBNET_BASE = "https://job.jobnet.dk/CV/FindWork/Search"
+JOBNET_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "da-DK,da;q=0.9",
+    "Referer": "https://job.jobnet.dk/CV/FindWork",
+    "Origin": "https://job.jobnet.dk",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+_jobnet_session = None
+
+def get_session():
+    global _jobnet_session
+    import requests as req
+    if _jobnet_session is None:
+        _jobnet_session = req.Session()
+        _jobnet_session.verify = False
+        _jobnet_session.headers.update(JOBNET_HEADERS)
+        try:
+            _jobnet_session.get("https://job.jobnet.dk/CV/FindWork", timeout=10)
+        except Exception:
+            pass
+    return _jobnet_session
+
+
+def clean_html(text):
+    if not text: return ""
+    text = re.sub(r"<[^>]+>", " ", text)
+    for ent, rep in [("&amp;","&"),("&nbsp;"," "),("&lt;","<"),("&gt;",">"),("&quot;",'"'),("&#39;","'")]:
+        text = text.replace(ent, rep)
+    return re.sub(r"\s{2,}", " ", text).strip()
+
+
+def parse_date(s):
+    if not s: return ""
+    try:
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        d = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).days
+        if d == 0: return "I dag"
+        if d == 1: return "I går"
+        if d < 7:  return f"{d} dage siden"
+        if d < 14: return "1 uge siden"
+        return f"{d//7} uger siden"
+    except:
+        return s[:10] if len(s) >= 10 else s
+
+
+SKILL_KWS = [
+    "python","javascript","typescript","java","golang","rust","php","swift","kotlin",
+    "react","vue","angular","next.js","node.js","django","flask","fastapi","spring",
+    "sql","postgresql","mysql","mongodb","redis","elasticsearch","kafka","spark",
+    "pandas","numpy","scikit-learn","tensorflow","pytorch","machine learning","nlp",
+    "aws","azure","gcp","docker","kubernetes","terraform","ci/cd","linux",
+    "figma","ux","ui","design systems","user research",
+    "excel","jira","scrum","agile","kanban","hubspot","salesforce","power bi","tableau",
+    "seo","sem","content marketing","b2b","saas",
+    "projektledelse","kommunikation","ledelse","analytisk","forretningsudvikling",
+]
+
+def extract_kws(text):
+    t = text.lower()
+    return list({s for s in SKILL_KWS if re.search(r'(?<!\w)' + re.escape(s) + r'(?!\w)', t)})
+
+
+INDUSTRY_RULES = {
+    "IT/Tech":   ["udvikler","developer","software","engineer","devops","it ","programmør","frontend","backend","fullstack","architect"],
+    "Design":    ["designer","ux","ui","grafisk","kreativ","visual","brand"],
+    "Data & AI": ["data scientist","analytiker","analyst","bi ","machine learning","mlops","nlp","data engineer"],
+    "Marketing": ["marketing","seo","sem","content","kommunikation","pr ","brand manager","growth"],
+    "Finans":    ["finans","økonomi","revisor","regnskab","controller","bank","forsikring"],
+    "Salg":      ["sælger","salg","account","sales","business development","key account"],
+    "HR":        ["hr ","human resources","rekruttering","talent","people","personale"],
+    "Ledelse":   ["leder","manager","chef","direktør","coo","cto","cfo","head of"],
+    "Sundhed":   ["sygeplejerske","læge","terapeut","psykolog","sundhed","hospital","klinik"],
+    "Produkt":   ["product manager","product owner","scrum master","projektleder"],
+}
+
+def get_industry(title, desc):
+    text = (title + " " + desc).lower()
+    return next((ind for ind, kws in INDUSTRY_RULES.items() if any(k in text for k in kws)), "Andet")
+
+
+def fetch_jobnet_page(offset=0, search=""):
+    import requests as req
+    session = get_session()
+    params = {
+        "Offset": offset,
+        "SortValue": "NewestPosted",
+        "SearchString": search,
+        "widk": "true",
+    }
+    try:
+        r = session.get(JOBNET_BASE, params=params, timeout=15)
+        if r.status_code != 200 or not r.text.strip():
+            return [], f"HTTP {r.status_code}"
+        if not r.text.strip().startswith("{"):
+            return [], f"Ikke JSON: {r.text[:100]}"
+        data = r.json()
+    except Exception as e:
+        return [], str(e)
+
+    postings = data.get("JobPositionPostings") or []
+    jobs = []
+    for p in postings:
+        jid  = str(p.get("JobPositionPostingIdentifier", ""))
+        title = (p.get("PositionTitle") or "").strip()
+        company = (p.get("HiringOrgName") or "").strip()
+        city = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or ""
+        region = p.get("WorkPlaceRegionName") or ""
+        location = ", ".join(filter(None, [city, region])) or "Danmark"
+        raw_desc = p.get("PresentationAgreement") or p.get("JobPositionPostingDescription") or ""
+        description = clean_html(raw_desc)[:1500]
+        posted_raw = p.get("PostingCreated") or ""
+        deadline_raw = p.get("LastDateApplication") or ""
+        abroad = bool(p.get("WorkPlaceAbroad"))
+        salary = ""
+        m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
+        if m: salary = f"{m.group(1)}–{m.group(2)} kr/md"
+        jobs.append({
+            "id": f"jn-{jid}",
+            "title": title, "company": company, "location": location,
+            "type": p.get("WorkHours") or "Fuldtid",
+            "workMode": "Remote" if abroad else "Kontor",
+            "salary": salary, "description": description,
+            "keywords": extract_kws(title + " " + description),
+            "posted": parse_date(posted_raw),
+            "deadline": deadline_raw[:10] if deadline_raw else "",
+            "url": f"https://job.jobnet.dk/CV/FindWork/Details/{jid}",
+            "source": "jobnet.dk", "sourceLabel": "Jobnet",
+            "industry": get_industry(title, description),
+        })
+
+    total = data.get("TotalResultCount") or len(jobs)
+    return jobs, None, total
+
+
+# ─── AI CV-analyse ────────────────────────────────────────────────────────────
+
+CV_SYSTEM = "Du er ekspert i rekruttering og CV-analyse. Returnér KUN gyldig JSON – ingen markdown."
+
+CV_PROMPT = """Analyser dette CV og returnér præcis dette JSON (ingen markdown, ingen forklaring):
+
+{
+  "skills": [
+    {"name": "Python", "cat": "Backend", "confidence": 95, "inferred": false, "hits": 3},
+    {"name": "Ledelse", "cat": "Bløde", "confidence": 80, "inferred": true, "hits": 2}
+  ],
+  "roleFamily": "Data & AI",
+  "seniority": "Mid-level",
+  "years": 3,
+  "education": "Kandidat",
+  "languages": ["Dansk", "Engelsk"],
+  "strengths": ["3 års erfaring med Python og dataanalyse", "Ledet tekniske teams"]
+}
+
+REGLER:
+- inferred: false = eksplicit nævnt; inferred: true = udledt fra kontekst (fx "ledede team" → Ledelse)
+- confidence: 50-100; hits: antal gange set
+- cat SKAL være én af: Frontend, Backend, Mobile, Data & AI, Cloud & DevOps, Design, Produkt & Agile, Marketing, Forretning, Bløde
+- seniority: "Junior", "Mid-level", "Senior", eller "Lead / Manager"
+- education: "PhD", "Kandidat", "Bachelor", "Gymnasial/EUD", "Bootcamp/Selvlært", eller null
+- Minimum 5 skills med inferred: true – udled bløde kompetencer aktivt fra arbejdssætninger
+- strengths: 3-5 konkrete sætninger baseret på CV'et
+
+CV:
+"""
+
+def analyze_cv_with_ai(cv_text, ai_type, ai_client):
+    if not ai_client:
+        return {"fallback": True, "error": "Ingen AI-klient"}
+    text = cv_text[:8000]
+    try:
+        if ai_type == "openai":
+            resp = ai_client.chat.completions.create(
+                model="gpt-4o-mini", max_tokens=2000, temperature=0.2,
+                messages=[{"role":"system","content":CV_SYSTEM},{"role":"user","content":CV_PROMPT+text}]
+            )
+            raw = resp.choices[0].message.content.strip()
+            model = "gpt-4o-mini"
+        else:
+            resp = ai_client.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=2000,
+                system=CV_SYSTEM,
+                messages=[{"role":"user","content":CV_PROMPT+text}]
+            )
+            raw = resp.content[0].text.strip()
+            model = "claude-haiku-4-5-20251001"
+
+        raw = re.sub(r"^```[a-z]*\n?","",raw).rstrip("` \n").strip()
+        result = json.loads(raw)
+        result["ai_analyzed"] = True
+        result["model"] = model
+        return result
+    except json.JSONDecodeError as e:
+        return {"fallback": True, "error": f"Ugyldig JSON fra AI: {e}"}
+    except Exception as e:
+        traceback.print_exc()
+        return {"fallback": True, "error": str(e)}
+
+
+# ─── HTTP Handler ─────────────────────────────────────────────────────────────
+
+class Handler(SimpleHTTPRequestHandler):
+    ai_type   = None
+    ai_client = None
+    ai_error  = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(DIR), **kwargs)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+
+        # ── /api/jobs ──────────────────────────────────────────────────────
+        if parsed.path == "/api/jobs":
+            qs     = parse_qs(parsed.query)
+            offset = int(qs.get("offset", ["0"])[0])
+            search = qs.get("q", [""])[0]
+            result = fetch_jobnet_page(offset, search)
+            if len(result) == 3:
+                jobs, err, total = result
+            else:
+                jobs, err = result; total = len(jobs)
+            if err and not jobs:
+                self._json({"error": err, "jobs": [], "total": 0}, 502)
+            else:
+                self._json({"jobs": jobs, "total": total or len(jobs), "offset": offset})
+            return
+
+        # ── /api/status ───────────────────────────────────────────────────
+        if parsed.path == "/api/status":
+            self._json({
+                "ok": True,
+                "ai_available": Handler.ai_client is not None,
+                "ai_type":  Handler.ai_type,
+                "ai_error": Handler.ai_error,
+            })
+            return
+
+        # ── /api/refresh ──────────────────────────────────────────────────
+        if parsed.path == "/api/refresh":
+            global _jobnet_session
+            _jobnet_session = None   # nulstil session
+            self._json({"ok": True})
+            return
+
+        super().do_GET()
+
+    def do_POST(self):
+        if urlparse(self.path).path == "/api/analyze-cv":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body   = json.loads(self.rfile.read(length).decode())
+                text   = body.get("text", "").strip()
+                if not text:
+                    self._json({"fallback": True, "error": "Tom tekst"}, 400); return
+
+                print(f"  [AI] Analyserer ({len(text)} tegn) via {Handler.ai_type or '–'}…")
+                result = analyze_cv_with_ai(text, Handler.ai_type, Handler.ai_client)
+                if not result.get("fallback"):
+                    n   = len(result.get("skills", []))
+                    inf = sum(1 for s in result.get("skills",[]) if s.get("inferred"))
+                    print(f"  [AI] ✅ {n} skills ({inf} udledt) – {result.get('roleFamily','?')}")
+                else:
+                    print(f"  [AI] Fallback: {result.get('error','')}")
+                self._json(result)
+            except Exception as e:
+                traceback.print_exc()
+                self._json({"fallback": True, "error": str(e)}, 500)
+            return
+        self.send_error(404)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors(); self.send_header("Content-Length","0"); self.end_headers()
+
+    def _cors(self):
+        origin = self.headers.get("Origin","")
+        # Tillad alle origins lokalt; på Railway kun kendte domæner
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            allowed = next((o for o in ALLOWED_ORIGINS if o and o == origin), None)
+            self.send_header("Access-Control-Allow-Origin", allowed or ALLOWED_ORIGINS[-1])
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Headers","Content-Type,Authorization")
+
+    def end_headers(self):
+        self._cors(); super().end_headers()
+
+    def _json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type","application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        if args and str(args[1]).startswith(("4","5")):
+            print(f"  {fmt % args}")
+
+
+# ─── Start ────────────────────────────────────────────────────────────────────
+
+def open_browser(url, delay=1.5):
+    time.sleep(delay); webbrowser.open(url)
+
+if __name__ == "__main__":
+    ensure_requests()
+
+    ai_type, ai_client, ai_error = setup_ai()
+    Handler.ai_type   = ai_type
+    Handler.ai_client = ai_client
+    Handler.ai_error  = ai_error
+
+    is_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+
+    print("=" * 52)
+    print(f"  Jobr.dk – {'Railway' if is_railway else 'Lokal'} Server  (port {PORT})")
+    print("=" * 52)
+    if ai_client:
+        label = "OpenAI gpt-4o-mini" if ai_type == "openai" else "Claude Haiku"
+        print(f"  🤖 AI-analyse:  Aktiv ({label})")
+    else:
+        print(f"  ⚠️  AI-analyse:  Ikke aktiv – {ai_error}")
+    print(f"  📡 Jobs:  Jobnet.dk proxy klar")
+    print()
+
+    url = f"http://localhost:{PORT}"
+    print(f"✅  Server kører → {url}\n")
+
+    # Åbn browser kun lokalt
+    if not is_railway:
+        Thread(target=open_browser, args=(url,), daemon=True).start()
+
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
