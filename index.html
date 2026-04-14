@@ -59,7 +59,23 @@
 </head>
 <body><div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef,useMemo,useCallback}=React;
+const {useState,useEffect,useRef,useMemo,useCallback,Component}=React;
+
+/* ── Error Boundary ───────────────────────────────────────────────────────── */
+class ErrorBoundary extends Component {
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return {err:e};}
+  render(){
+    if(this.state.err) return (
+      <div style={{padding:32,fontFamily:'Manrope,sans-serif',color:'#c0392b',background:'#fff5f5',minHeight:'100vh'}}>
+        <h2>Noget gik galt</h2>
+        <pre style={{whiteSpace:'pre-wrap',fontSize:13,background:'#fff',padding:16,border:'1px solid #fcc'}}>{this.state.err.message}{'\n'}{this.state.err.stack}</pre>
+        <button onClick={()=>window.location.reload()} style={{marginTop:16,padding:'8px 16px',cursor:'pointer'}}>Genindlæs</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 /* ═══════════════════════ CONFIG ═══════════════════════════════════════════ */
 // 🔧 Udfyld disse tre efter du har oprettet Supabase + Railway:
@@ -2010,7 +2026,7 @@ const UploadScreen = ({onProfile, initialFile}) => {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
