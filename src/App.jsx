@@ -638,6 +638,50 @@ function discoveryScore(profile, job) {
   };
 }
 
+/* ═══════════════════════ JOBNET BROWSER FETCH ══════════════════════════════ */
+// Henter jobs direkte fra browseren via CORS-proxy (undgår Railway IP-blokering)
+const JOBNET_SEARCH = 'https://job.jobnet.dk/CV/FindWork/Search';
+const CORS_PROXY    = 'https://corsproxy.io/?';
+
+function parseJobnetData(data) {
+  const postings = data.JobPositionPostings || [];
+  return postings.map(p => {
+    const jid      = String(p.JobPositionPostingIdentifier || '');
+    const title    = (p.PositionTitle || '').trim();
+    const company  = (p.HiringOrgName || '').trim();
+    const city     = p.WorkPlaceCity || p.WorkPlaceName || '';
+    const region   = p.WorkPlaceRegionName || '';
+    const location = [city, region].filter(Boolean).join(', ') || 'Danmark';
+    const rawDesc  = p.PresentationAgreement || p.JobPositionPostingDescription || '';
+    const desc     = rawDesc.replace(/<[^>]+>/g,' ').replace(/\s{2,}/g,' ').trim().slice(0,1500);
+    const posted   = p.PostingCreated || '';
+    const deadline = (p.LastDateApplication || '').slice(0,10);
+    const abroad   = !!p.WorkPlaceAbroad;
+    const salaryM  = desc.match(/(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)/i);
+    const salary   = salaryM ? `${salaryM[1]}–${salaryM[2]} kr/md` : '';
+    const days     = posted ? Math.floor((Date.now()-new Date(posted))/86400000) : 99;
+    const postedTxt= days===0?'I dag':days===1?'I går':days<7?`${days} dage siden`:days<14?'1 uge siden':`${days/7|0} uger siden`;
+    const SKILL_KW = ['python','javascript','typescript','react','sql','java','golang','docker','kubernetes','aws','azure','figma','ux','scrum','agile','excel','power bi','kommunikation','ledelse','projektledelse','seo','b2b','saas'];
+    const kws      = SKILL_KW.filter(k=>new RegExp(`(?<!\\w)${k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?!\\w)`,'i').test(title+' '+desc));
+    const INDUSTRY = [['IT/Tech',['udvikler','developer','software','engineer','it ','frontend','backend']],['Design',['designer','ux','ui','grafisk','kreativ']],['Data & AI',['data scientist','analytiker','machine learning','bi ']],['Marketing',['marketing','seo','content','brand']],['Finans',['finans','økonomi','revisor','regnskab']],['Salg',['sælger','salg','account','sales']],['HR',['hr ','rekruttering','talent']],['Produkt',['product manager','product owner','projektleder']]];
+    const txt      = (title+' '+desc).toLowerCase();
+    const industry = (INDUSTRY.find(([,kws])=>kws.some(k=>txt.includes(k)))||['Andet'])[0];
+    return { id:`jn-${jid}`, title, company, location, type: p.WorkHours||'Fuldtid', workMode: abroad?'Remote':'Kontor', salary, description:desc, keywords:kws, posted:postedTxt, deadline, url:`https://job.jobnet.dk/CV/FindWork/Details/${jid}`, source:'jobnet.dk', sourceLabel:'Jobnet', industry };
+  });
+}
+
+async function fetchJobnetBrowser(offset=0, search='') {
+  const params = new URLSearchParams({ Offset:offset, SortValue:'NewestPosted', SearchString:search||'', widk:'true' });
+  const targetUrl = `${JOBNET_SEARCH}?${params}`;
+  const proxyUrl  = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
+  const r = await fetch(proxyUrl, { headers:{ 'X-Requested-With':'XMLHttpRequest' } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data = await r.json();
+  const jobs = parseJobnetData(data);
+  const total = data.TotalResultCount || jobs.length;
+  return { jobs, total };
+}
+
 /* ═══════════════════════ FILE PARSERS ══════════════════════════════════════ */
 async function parsePDF(file) {
   await new Promise(res => {
@@ -1940,24 +1984,29 @@ const App = () => {
     loadProfile();
   },[authReady, user]);
 
-  // Hent jobs fra /api/jobs proxy (Jobnet live) – loader flere sider
+  // Hent jobs direkte fra Jobnet via browser (ingen Railway nødvendig)
   const loadJobs = useCallback(async (reset=false) => {
     setJobsLoading(true);
     try {
-      const currentCount = reset ? 0 : jobsData === MOCK_JOBS ? 0 : jobsData.length;
-      const pages = 5; // hent 5 sider (5×20 = 100 jobs)
+      const pages = 5; // 5×20 = 100 jobs
       let all = reset ? [] : (jobsData === MOCK_JOBS ? [] : [...jobsData]);
+      const startOffset = reset ? 0 : (jobsData === MOCK_JOBS ? 0 : jobsData.length);
       for(let i = 0; i < pages; i++) {
-        const offset = currentCount + i * 20;
-        const r = await fetch(`${API_BASE}/api/jobs?offset=${offset}`);
-        if(!r.ok) break;
-        const d = await r.json();
-        if(!d.jobs || d.jobs.length === 0) break;
-        all = [...all, ...d.jobs];
-        if(i === 0) { setJobsData(all); setJobsLoaded(true); setJobsTotal(d.total||0); }
+        const offset = startOffset + i * 20;
+        const { jobs, total } = await fetchJobnetBrowser(offset);
+        if(!jobs || jobs.length === 0) break;
+        all = [...all, ...jobs];
+        if(i === 0) { setJobsData(all); setJobsLoaded(true); setJobsTotal(total||0); }
       }
       if(all.length > 0) { setJobsData(all); setJobsLoaded(true); }
-    } catch(e) { console.warn('Jobs fetch fejl:', e.message); }
+    } catch(e) {
+      console.warn('Jobnet browser fetch fejl:', e.message);
+      // Prøv Railway som fallback
+      try {
+        const r = await fetch(`${API_BASE}/api/jobs?offset=0`);
+        if(r.ok) { const d = await r.json(); if(d.jobs?.length) { setJobsData(d.jobs); setJobsLoaded(true); setJobsTotal(d.total||0); } }
+      } catch(e2) { console.warn('Railway fallback fejl:', e2.message); }
+    }
     setJobsLoading(false);
   }, [jobsData]);
 
