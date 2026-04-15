@@ -432,6 +432,9 @@ async function analyzeCV(rawText, fileName, onProgress) {
       adjacent_roles: aiResult.adjacent_roles || [],
       summary: aiResult.summary || '',
       context_keywords: aiResult.context_keywords || [],
+      wildcard_roles: aiResult.wildcard_roles || [],
+      working_style: aiResult.working_style || '',
+      discovery_reasoning: aiResult.discovery_reasoning || '',
       totalSkills: skills.length, explicitCount, inferredCount,
       aiAnalyzed, aiModel: aiResult.model,
     };
@@ -602,6 +605,37 @@ function scoreJob(profile, job, prefs) {
   const gaps = [...jobSkills].filter(s => !cvSkills.has(s)).slice(0,4);
 
   return { total, skillScore, roleScore, senScore, kwScore, transferBonus: transfer.bonus, matched, gaps, reasons };
+}
+
+/* ─── Discovery scoring: matcher job mod wildcard_roles ──────────────────── */
+function discoveryScore(profile, job) {
+  if (!profile?.wildcard_roles?.length) return null;
+  const jt = norm(job.title + " " + job.description);
+  const wildcards = profile.wildcard_roles.map(r => r.toLowerCase());
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  wildcards.forEach(wRole => {
+    const words = wRole.split(/\s+/).filter(w => w.length > 3);
+    const matchCount = words.filter(w => jt.includes(w)).length;
+    if (matchCount > 0) {
+      const score = Math.round((matchCount / words.length) * 100);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = wRole;
+      }
+    }
+  });
+
+  if (!bestMatch) return null;
+
+  return {
+    score: Math.min(bestScore + 30, 85), // Discovery jobs capped at 85 to avoid false positives
+    matchedRole: bestMatch,
+    reasoning: profile.discovery_reasoning || '',
+    working_style: profile.working_style || '',
+  };
 }
 
 /* ═══════════════════════ FILE PARSERS ══════════════════════════════════════ */
@@ -996,11 +1030,11 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
 };
 
 /* ═══════════════════════ JOB ROW ════════════════════════════════════════════ */
-const JobRow = ({job,match,selected,onSelect,saved,applied,onSave}) => {
+const JobRow = ({job,match,selected,onSelect,saved,applied,onSave,discoveryLabel}) => {
   const [hov,setHov]=useState(false);
   return (
     <div onClick={onSelect} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{display:'flex',alignItems:'flex-start',gap:10,padding:'11px 14px',borderLeft:`3px solid ${selected?'var(--navy)':'transparent'}`,borderBottom:'1px solid var(--border)',background:selected?'var(--surface-low)':hov?'var(--surface-low)':'var(--bg)',cursor:'pointer',transition:'background .1s'}}>
+      style={{display:'flex',alignItems:'flex-start',gap:10,padding:'11px 14px',paddingLeft: discoveryLabel ? 17 : 14, borderLeft:`3px solid ${selected?'var(--navy)':discoveryLabel?'var(--amber)':'transparent'}`,borderBottom:'1px solid var(--border)',background:selected?'var(--surface-low)':hov?'var(--surface-low)':'var(--bg)',cursor:'pointer',transition:'background .1s'}}>
       <div style={{position:'relative',flexShrink:0}}>
         <div style={{width:34,height:34,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,color:'var(--muted)'}}>
           {job.company[0]}
@@ -1026,7 +1060,12 @@ const JobRow = ({job,match,selected,onSelect,saved,applied,onSave}) => {
           <span style={{fontSize:11,color:'var(--faint)'}}>{job.workMode}</span>
           {job.posted&&<><span style={{color:'var(--border)',fontSize:10}}>·</span><span style={{fontSize:11,color:'var(--faint)'}}>{job.posted}</span></>}
         </div>
-        {match?.matched?.length>0 && (
+        {discoveryLabel && (
+          <div style={{marginTop:4,display:'flex',alignItems:'center',gap:4}}>
+            <span style={{fontSize:10,padding:'1px 6px',background:'var(--amber-bg)',border:'1px solid var(--amber-bd)',color:'var(--amber)',fontWeight:600}}>🔭 {discoveryLabel}</span>
+          </div>
+        )}
+        {!discoveryLabel && match?.matched?.length>0 && (
           <div style={{display:'flex',gap:4,marginTop:4,flexWrap:'wrap'}}>
             {match.matched.slice(0,3).map(k=>(
               <span key={k} style={{fontSize:10,padding:'1px 6px',background:'var(--green-bg)',border:'1px solid var(--green-bd)',color:'var(--green)',fontWeight:500}}>{k}</span>
@@ -1427,6 +1466,7 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
   const [industryF,setIndustryF] = useState('Alle');
   const [modeF,setModeF] = useState('Alle');
   const [minScore,setMinScore] = useState(0);
+  const [showDiscovery,setShowDiscovery] = useState(true);
   const [jobsDB,setJobsDB] = useState(jobs);
   const [realJobs,setRealJobs] = useState(!!jobsLoaded);
   const [refreshing,setRefreshing] = useState(false);
@@ -1458,6 +1498,24 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
     jobsDB.forEach(j=>{ m[j.id]=scoreJob(profile,j,prefs); });
     return m;
   },[profile,jobsDB,prefs]);
+
+  // Discovery: jobs der matcher wildcard_roles men ikke er i top-matches
+  const discoveredJobs = useMemo(()=>{
+    if(!profile?.wildcard_roles?.length) return [];
+    const topIds = new Set(
+      Object.entries(matches)
+        .filter(([,m])=>m&&m.total>=55)
+        .map(([id])=>id)
+    );
+    const results = [];
+    jobsDB.forEach(j=>{
+      if(topIds.has(j.id)) return; // Allerede i normale match
+      const d = discoveryScore(profile, j);
+      if(d && d.score >= 40) results.push({...j, _discovery: d});
+    });
+    results.sort((a,b)=>b._discovery.score - a._discovery.score);
+    return results.slice(0,5);
+  },[profile,jobsDB,matches]);
 
   const filtered = useMemo(()=>{
     const q=search.toLowerCase();
@@ -1586,6 +1644,43 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
                     onSave={toggleSave}/>
                 ))
               }
+
+              {/* Opdagede muligheder */}
+              {tab==='jobs' && !search && discoveredJobs.length > 0 && (
+                <div style={{padding:'0 0 24px'}}>
+                  <button onClick={()=>setShowDiscovery(s=>!s)}
+                    style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:8,background:'linear-gradient(90deg,var(--amber-bg),var(--surface))',borderTop:'1px solid var(--amber-bd)',borderBottom:showDiscovery?'none':'1px solid var(--border)',cursor:'pointer'}}>
+                    <span style={{fontSize:16}}>🔭</span>
+                    <div style={{flex:1,textAlign:'left'}}>
+                      <div style={{fontSize:12,fontWeight:700,color:'var(--amber)',letterSpacing:'.04em',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>Opdagede muligheder</div>
+                      <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>Jobs du måske ikke selv har overvejet — baseret på dine skjulte styrker</div>
+                    </div>
+                    <span style={{fontSize:11,color:'var(--faint)',transform:showDiscovery?'rotate(0)':'rotate(-90deg)',transition:'transform .2s'}}>▼</span>
+                  </button>
+
+                  {showDiscovery && (
+                    <div>
+                      {profile?.discovery_reasoning && (
+                        <div style={{padding:'10px 14px',background:'var(--amber-bg)',borderBottom:'1px solid var(--amber-bd)',fontSize:12,color:'var(--amber)',lineHeight:1.5,display:'flex',gap:8}}>
+                          <span style={{flexShrink:0,marginTop:1}}>💡</span>
+                          <span>{profile.discovery_reasoning}</span>
+                        </div>
+                      )}
+                      {discoveredJobs.map(j=>(
+                        <div key={j.id} style={{borderBottom:'1px solid var(--border)',position:'relative'}}>
+                          <div style={{position:'absolute',top:10,left:0,width:3,height:'calc(100% - 20px)',background:'var(--amber)',opacity:.6}}/>
+                          <JobRow job={j} match={{total:j._discovery.score, reasons:[`Wildcard match: ${j._discovery.matchedRole}`]}}
+                            selected={selected?.id===j.id}
+                            onSelect={()=>setSelected(j)}
+                            saved={savedIds.includes(j.id)} applied={isApplied(j.id)}
+                            onSave={toggleSave}
+                            discoveryLabel={j._discovery.matchedRole}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

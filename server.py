@@ -247,7 +247,10 @@ CV_PROMPT = """Analyser dette CV grundigt og returnér præcis dette JSON-format
   "domains": ["Tekstildesign", "Bæredygtigt mode", "Materialeteknologi"],
   "adjacent_roles": ["Produktdesigner", "Bæredygtighedskonsulent", "Brand Manager"],
   "summary": "Erfaren tekstildesigner med stærk baggrund i bæredygtige materialer",
-  "context_keywords": ["cirkulær økonomi", "leverandørstyring", "kollektionsudvikling"]
+  "context_keywords": ["cirkulær økonomi", "leverandørstyring", "kollektionsudvikling"],
+  "wildcard_roles": ["UX Researcher", "Bæredygtighedskonsulent", "Indkøbsansvarlig i modebranchen"],
+  "working_style": "analytisk og struktureret med stærkt visuelt sans og evne til at omsætte komplekse krav til konkrete løsninger",
+  "discovery_reasoning": "Tekstildesignerens erfaring med materialevalg og leverandørkæder giver direkte overførbar viden til produktionsoptimering og indkøb i fremstillingsindustrien"
 }
 
 REGLER FOR SKILLS:
@@ -267,6 +270,14 @@ REGLER FOR ØVRIGE FELTER:
 - summary: 1 præcis sætning der beskriver personen professionelt
 - context_keywords: 5-10 nøgleord fra CV'ets kontekst der er vigtige for job-matching
 - strengths: 3-5 konkrete, evidensbaserede sætninger (citér specifikke tal/projekter fra CV'et)
+- wildcard_roles: 3-6 jobtitler personen ALDRIG HAR OVERVEJET men ville være overraskende gode til
+  Tænk som karriererådgiver: hvad ville overraske denne person positivt?
+  Eksempler: journalist → UX researcher (samme evne til at forstå brugerbehov og formidle)
+             lærer → L&D konsulent, change management (pædagogiske evner i erhvervslivet)
+             tekstildesigner → produktionsleder, indkøbsansvarlig (materialeekspertise + leverandørstyring)
+- working_style: 1-2 sætninger der beskriver HVORDAN personen arbejder (analytisk/kreativ/systemisk/relationel osv.)
+  Basér det på konkrete beviser fra CV'et – ikke generiske fraser
+- discovery_reasoning: 1-2 sætninger der forklarer HVORFOR de uventede roller giver mening for netop denne person
 
 CV:
 """
@@ -278,14 +289,14 @@ def analyze_cv_with_ai(cv_text, ai_type, ai_client):
     try:
         if ai_type == "openai":
             resp = ai_client.chat.completions.create(
-                model="gpt-4o-mini", max_tokens=2000, temperature=0.2,
+                model="gpt-4o-mini", max_tokens=2500, temperature=0.3,
                 messages=[{"role":"system","content":CV_SYSTEM},{"role":"user","content":CV_PROMPT+text}]
             )
             raw = resp.choices[0].message.content.strip()
             model = "gpt-4o-mini"
         else:
             resp = ai_client.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=2000,
+                model="claude-haiku-4-5-20251001", max_tokens=2500,
                 system=CV_SYSTEM,
                 messages=[{"role":"user","content":CV_PROMPT+text}]
             )
