@@ -94,12 +94,11 @@ def fetch_adzuna_page(offset=0, search=""):
     import requests as req
     page = (offset // 20) + 1
     params = {
-        "app_id":          ADZUNA_APP_ID,
-        "app_key":         ADZUNA_APP_KEY,
+        "app_id":           ADZUNA_APP_ID,
+        "app_key":          ADZUNA_APP_KEY,
         "results_per_page": 20,
-        "what":            search or "",
-        "content-type":    "application/json",
-        "sort_by":         "date",
+        "what":             search or "",
+        "sort_by":          "date",
     }
     try:
         r = req.get(f"{ADZUNA_BASE}/{page}", params=params, timeout=15)
