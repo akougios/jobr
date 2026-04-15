@@ -88,20 +88,23 @@ def setup_ai():
 
 ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID",  "89154cc5")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "c5a493c6da98b7710733944cf74b9d07")
-ADZUNA_BASE    = "https://api.adzuna.com/v1/api/jobs/dk/search"
 
 def fetch_adzuna_page(offset=0, search=""):
     import requests as req
     page = (offset // 20) + 1
+    url = f"https://api.adzuna.com/v1/api/jobs/dk/search/{page}"
     params = {
         "app_id":           ADZUNA_APP_ID,
         "app_key":          ADZUNA_APP_KEY,
         "results_per_page": 20,
         "what":             search or "",
         "sort_by":          "date",
+        "content-type":     "application/json",
     }
     try:
-        r = req.get(f"{ADZUNA_BASE}/{page}", params=params, timeout=15)
+        print(f"  [Adzuna] GET {url} page={page}")
+        r = req.get(url, params=params, timeout=15)
+        print(f"  [Adzuna] Status: {r.status_code}, Body[:200]: {r.text[:200]}")
         if r.status_code != 200:
             return [], f"Adzuna HTTP {r.status_code}", 0
         data = r.json()
