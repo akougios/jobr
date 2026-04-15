@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import mammoth from 'mammoth'
 
