@@ -84,6 +84,67 @@ def setup_ai():
     return None, None, "Ingen API-nøgle. Sæt OPENAI_API_KEY eller ANTHROPIC_API_KEY"
 
 
+# ─── Adzuna API ───────────────────────────────────────────────────────────────
+
+ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID",  "89154cc5")
+ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "c5a493c6da98b7710733944cf74b9d07")
+ADZUNA_BASE    = "https://api.adzuna.com/v1/api/jobs/dk/search"
+
+def fetch_adzuna_page(offset=0, search=""):
+    import requests as req
+    page = (offset // 20) + 1
+    params = {
+        "app_id":          ADZUNA_APP_ID,
+        "app_key":         ADZUNA_APP_KEY,
+        "results_per_page": 20,
+        "what":            search or "",
+        "content-type":    "application/json",
+        "sort_by":         "date",
+    }
+    try:
+        r = req.get(f"{ADZUNA_BASE}/{page}", params=params, timeout=15)
+        if r.status_code != 200:
+            return [], f"Adzuna HTTP {r.status_code}", 0
+        data = r.json()
+    except Exception as e:
+        return [], str(e), 0
+
+    results = data.get("results") or []
+    jobs = []
+    for p in results:
+        jid         = str(p.get("id", ""))
+        title       = (p.get("title") or "").strip()
+        company     = (p.get("company", {}) or {}).get("display_name", "Ukendt")
+        location    = (p.get("location", {}) or {}).get("display_name", "Danmark")
+        description = clean_html(p.get("description") or "")[:1500]
+        salary_min  = p.get("salary_min")
+        salary_max  = p.get("salary_max")
+        salary      = f"{int(salary_min):,}–{int(salary_max):,} kr/md".replace(",", ".") if salary_min and salary_max else ""
+        created     = p.get("created") or ""
+        redirect    = p.get("redirect_url") or ""
+        contract    = (p.get("contract_time") or "full_time").replace("_", " ").title()
+        jobs.append({
+            "id":          f"az-{jid}",
+            "title":       title,
+            "company":     company,
+            "location":    location,
+            "type":        contract,
+            "workMode":    "Kontor",
+            "salary":      salary,
+            "description": description,
+            "keywords":    extract_kws(title + " " + description),
+            "posted":      parse_date(created),
+            "deadline":    "",
+            "url":         redirect,
+            "source":      "adzuna.dk",
+            "sourceLabel": "Adzuna",
+            "industry":    get_industry(title, description),
+        })
+
+    total = data.get("count") or len(jobs)
+    return jobs, None, total
+
+
 # ─── Jobnet proxy ─────────────────────────────────────────────────────────────
 
 JOBNET_BASE = "https://job.jobnet.dk/CV/FindWork/Search"
@@ -333,15 +394,25 @@ class Handler(SimpleHTTPRequestHandler):
             qs     = parse_qs(parsed.query)
             offset = int(qs.get("offset", ["0"])[0])
             search = qs.get("q", [""])[0]
-            result = fetch_jobnet_page(offset, search)
-            if len(result) == 3:
-                jobs, err, total = result
-            else:
-                jobs, err = result; total = len(jobs)
+
+            # Prøv Adzuna først (officiel API, ingen bot-blokering)
+            jobs, err, total = fetch_adzuna_page(offset, search)
+            source = "adzuna"
+
+            # Fallback til Jobnet hvis Adzuna fejler
+            if err or not jobs:
+                print(f"  [Adzuna] Fejl: {err} – prøver Jobnet som fallback")
+                result = fetch_jobnet_page(offset, search)
+                if len(result) == 3:
+                    jobs, err, total = result
+                else:
+                    jobs, err = result; total = len(jobs)
+                source = "jobnet"
+
             if err and not jobs:
                 self._json({"error": err, "jobs": [], "total": 0}, 502)
             else:
-                self._json({"jobs": jobs, "total": total or len(jobs), "offset": offset})
+                self._json({"jobs": jobs, "total": total or len(jobs), "offset": offset, "source": source})
             return
 
         # ── /api/status ───────────────────────────────────────────────────
