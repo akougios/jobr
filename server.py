@@ -226,31 +226,47 @@ def fetch_jobnet_page(offset=0, search=""):
 
 # ─── AI CV-analyse ────────────────────────────────────────────────────────────
 
-CV_SYSTEM = "Du er ekspert i rekruttering og CV-analyse. Returnér KUN gyldig JSON – ingen markdown."
+CV_SYSTEM = """Du er en erfaren headhunter og rekrutteringsekspert med 20 års erfaring.
+Din opgave er at analysere CV'er dybdegående og identificere ALLE kompetencer – både eksplicitte og underliggende.
+Du forstår transferable skills: en tekstildesigner kan sagtens arbejde med produktdesign, en journalist med content marketing osv.
+Returnér KUN gyldig JSON – ingen markdown, ingen forklaring."""
 
-CV_PROMPT = """Analyser dette CV og returnér præcis dette JSON (ingen markdown, ingen forklaring):
+CV_PROMPT = """Analyser dette CV grundigt og returnér præcis dette JSON-format:
 
 {
   "skills": [
     {"name": "Python", "cat": "Backend", "confidence": 95, "inferred": false, "hits": 3},
-    {"name": "Ledelse", "cat": "Bløde", "confidence": 80, "inferred": true, "hits": 2}
+    {"name": "Projektledelse", "cat": "Produkt & Agile", "confidence": 85, "inferred": true, "hits": 4}
   ],
   "roleFamily": "Data & AI",
   "seniority": "Mid-level",
-  "years": 3,
+  "years": 4,
   "education": "Kandidat",
   "languages": ["Dansk", "Engelsk"],
-  "strengths": ["3 års erfaring med Python og dataanalyse", "Ledet tekniske teams"]
+  "strengths": ["4 års erfaring med dataanalyse", "Selvstændig projektleder på 3+ projekter"],
+  "domains": ["Tekstildesign", "Bæredygtigt mode", "Materialeteknologi"],
+  "adjacent_roles": ["Produktdesigner", "Bæredygtighedskonsulent", "Brand Manager"],
+  "summary": "Erfaren tekstildesigner med stærk baggrund i bæredygtige materialer",
+  "context_keywords": ["cirkulær økonomi", "leverandørstyring", "kollektionsudvikling"]
 }
 
-REGLER:
-- inferred: false = eksplicit nævnt; inferred: true = udledt fra kontekst (fx "ledede team" → Ledelse)
-- confidence: 50-100; hits: antal gange set
+REGLER FOR SKILLS:
+- Udled ALLE kompetencer fra CV'et – ikke kun direkte nævnte
+- inferred: false = eksplicit nævnt; inferred: true = udledt fra projekter/ansvar/kontekst
+- confidence: 50-100 (100 = mange eksplicitte beviser, 50 = svag indikation)
+- hits: antal gange kompetencen fremgår direkte eller indirekte
 - cat SKAL være én af: Frontend, Backend, Mobile, Data & AI, Cloud & DevOps, Design, Produkt & Agile, Marketing, Forretning, Bløde
-- seniority: "Junior", "Mid-level", "Senior", eller "Lead / Manager"
+- Minimum 8 skills med inferred: true – læs AKTIVT mellem linjerne
+- Eksempler: "koordinerede 5 leverandører" → Leverandørstyring + Forhandling; "præsenterede for bestyrelsen" → Stakeholder Management
+
+REGLER FOR ØVRIGE FELTER:
+- seniority: "Junior" (0-2 år), "Mid-level" (2-5 år), "Senior" (5-10 år), "Lead / Manager" (10+ år eller lederansvar)
 - education: "PhD", "Kandidat", "Bachelor", "Gymnasial/EUD", "Bootcamp/Selvlært", eller null
-- Minimum 5 skills med inferred: true – udled bløde kompetencer aktivt fra arbejdssætninger
-- strengths: 3-5 konkrete sætninger baseret på CV'et
+- domains: 2-5 specifikke fagdomæner personen har dyb ekspertise i
+- adjacent_roles: 4-8 jobtitler personen REALISTISK kan søge baseret på transferable skills
+- summary: 1 præcis sætning der beskriver personen professionelt
+- context_keywords: 5-10 nøgleord fra CV'ets kontekst der er vigtige for job-matching
+- strengths: 3-5 konkrete, evidensbaserede sætninger (citér specifikke tal/projekter fra CV'et)
 
 CV:
 """
@@ -258,7 +274,7 @@ CV:
 def analyze_cv_with_ai(cv_text, ai_type, ai_client):
     if not ai_client:
         return {"fallback": True, "error": "Ingen AI-klient"}
-    text = cv_text[:8000]
+    text = cv_text[:12000]
     try:
         if ai_type == "openai":
             resp = ai_client.chat.completions.create(

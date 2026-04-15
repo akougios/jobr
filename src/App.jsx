@@ -428,6 +428,10 @@ async function analyzeCV(rawText, fileName, onProgress) {
       years: finalYears, seniority: finalSeniority,
       education: finalEducation, languages: finalLanguages,
       roles, roleFamily, strengths,
+      domains: aiResult.domains || [],
+      adjacent_roles: aiResult.adjacent_roles || [],
+      summary: aiResult.summary || '',
+      context_keywords: aiResult.context_keywords || [],
       totalSkills: skills.length, explicitCount, inferredCount,
       aiAnalyzed, aiModel: aiResult.model,
     };
@@ -459,30 +463,98 @@ async function analyzeCV(rawText, fileName, onProgress) {
 }
 
 /* ═══════════════════════ MATCHING ENGINE ═══════════════════════════════════ */
+
+// Transferable skills map: hvis profil har domain X, giver det bonus ved jobs i Y
+const DOMAIN_TRANSFER_MAP = {
+  // Design & kreative fag
+  'tekstildesign':      ['produktdesign','modedesign','industrielt design','ux','branding','kreativ'],
+  'modedesign':         ['tekstildesign','produktdesign','branding','retail','e-commerce','kreativ'],
+  'grafisk design':     ['ux','ui','branding','marketing','kommunikation','kreativ','medier'],
+  'industrielt design': ['produktdesign','ingeniør','innovation','cad','produktion'],
+  'ux design':          ['produktdesign','frontend','digital','app','brugeroplevelse'],
+  'arkitektur':         ['projektledelse','byggeri','cad','ejendom','facility'],
+  // Tech
+  'backend':            ['api','cloud','devops','data','fullstack'],
+  'frontend':           ['ux','ui','app','e-commerce','digital'],
+  'data science':       ['ai','machine learning','analyse','business intelligence','statistik'],
+  'devops':             ['cloud','infrastruktur','backend','sikkerhed'],
+  // Forretning
+  'salg':               ['account management','business development','crm','kundeservice','marketing'],
+  'marketing':          ['content','social media','branding','kommunikation','pr','salg'],
+  'økonomi':            ['regnskab','controlling','finans','analyse','revision'],
+  'hr':                 ['rekruttering','organisationsudvikling','ledelse','kommunikation'],
+  'projektledelse':     ['produktstyring','agile','scrum','ledelse','koordinering'],
+  // Sundhed & videnskab
+  'sygepleje':          ['sundhed','omsorg','klinik','patient','medicin'],
+  'biologi':            ['laboratorie','forskning','miljø','pharma','kvalitet'],
+  'kemi':               ['laboratorie','produktion','pharma','materialer','kvalitet'],
+  // Kommunikation
+  'journalistik':       ['content marketing','kommunikation','pr','social media','redaktion'],
+  'kommunikation':      ['pr','marketing','content','branding','journalistik'],
+  'pædagogik':          ['hr','undervisning','ledelse','kommunikation','coaching'],
+};
+
+function getTransferBonus(profile, jobText) {
+  if (!profile) return 0;
+  const jt = jobText.toLowerCase();
+  let bonus = 0;
+  const reasons = [];
+
+  // 1. Tjek profil-domains mod job-tekst
+  const profileDomains = (profile.domains || []).map(d => d.toLowerCase());
+  profileDomains.forEach(domain => {
+    const transfers = DOMAIN_TRANSFER_MAP[domain] || [];
+    const matches = transfers.filter(t => jt.includes(t));
+    if (matches.length > 0) {
+      bonus += Math.min(matches.length * 8, 20);
+      reasons.push(`Transferable: ${domain} → ${matches[0]}`);
+    }
+  });
+
+  // 2. Tjek adjacent_roles mod job-titel
+  const adjacentRoles = (profile.adjacent_roles || []).map(r => r.toLowerCase());
+  const jobTitle = jobText.split(' ').slice(0,5).join(' ');
+  adjacentRoles.forEach(role => {
+    const roleWords = role.split(' ');
+    if (roleWords.some(w => w.length > 4 && jobTitle.includes(w))) {
+      bonus += 15;
+      reasons.push(`Nærliggende rolle: ${role}`);
+    }
+  });
+
+  // 3. Context keywords fra AI-analyse
+  const contextKws = (profile.context_keywords || []).map(k => k.toLowerCase());
+  const kwMatches = contextKws.filter(k => jt.includes(k));
+  bonus += kwMatches.length * 4;
+
+  return { bonus: Math.min(bonus, 25), reasons };
+}
+
 function scoreJob(profile, job, prefs) {
   if (!profile) return null;
   const jobText = norm(job.title+" "+job.description+" "+(job.keywords||[]).join(" "));
-  const jobSkills = new Set(extractSkillsFromText(job.title+" "+job.description+" "+(job.keywords||[]).join(" ")).map(s=>s.name));
+  const jobSkillsRaw = extractSkillsFromText(job.title+" "+job.description+" "+(job.keywords||[]).join(" "));
+  const jobSkills = new Set(jobSkillsRaw.map(s=>s.name));
   const cvSkills  = new Set(profile.skills.map(s=>s.name));
 
-  // 1. Skill overlap (45%) — explicit matches count fully, inferred count at 0.65 weight
+  // 1. Skill overlap (40%) — explicit matches tæller fuldt, inferred 0.65
   const cvSkillsMap = new Map(profile.skills.map(s=>[s.name, s]));
   const matched = [...cvSkills].filter(s => jobSkills.has(s));
   const weightedMatchScore = matched.reduce((sum, name) => {
     const sk = cvSkillsMap.get(name);
     return sum + (sk?.inferred ? 0.65 : 1.0);
   }, 0);
-  const skillScore = jobSkills.size === 0 ? 50 : Math.round((weightedMatchScore / Math.max(jobSkills.size, 1)) * 100);
+  const skillScore = jobSkills.size === 0 ? 50
+    : Math.round((weightedMatchScore / Math.max(jobSkills.size, 1)) * 100);
 
   // 2. Role family match (25%)
-  const jobFamily = detectRoleFamily(extractSkillsFromText(jobText), job.title);
+  const jobFamily = detectRoleFamily(jobSkillsRaw, job.title);
   const roleScore = profile.roleFamily === jobFamily ? 100
     : (profile.skills.some(s => s.cat === jobFamily) ? 60 : 30);
 
   // 3. Seniority match (20%)
   let senScore = 70;
-  const sen = profile.seniority;
-  const reqMatch = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*erfaring/i);
+  const reqMatch = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*(?:erfaring|experience)/i);
   if (reqMatch) {
     const req = parseInt(reqMatch[1]);
     const yrs = profile.years ?? 0;
@@ -493,36 +565,43 @@ function scoreJob(profile, job, prefs) {
     else senScore = 35;
   }
 
-  // 4. Keyword density in job description (10%)
+  // 4. Keyword density (10%)
+  const allKws = [
+    ...(profile.keywords || []).slice(0,15),
+    ...(profile.context_keywords || []).slice(0,10),
+  ];
   let kwScore = 0;
-  const cvKws = profile.keywords.slice(0,15);
-  cvKws.forEach(k => { if (jobText.includes(norm(k))) kwScore += 100/cvKws.length; });
-  kwScore = Math.round(kwScore);
+  allKws.forEach(k => { if (k && jobText.includes(norm(k))) kwScore += 100/allKws.length; });
+  kwScore = Math.round(Math.min(kwScore, 100));
 
-  // 5. Præference-bonus (op til +12 point)
+  // 5. Cross-domain / transferable bonus (op til +25)
+  const transfer = getTransferBonus(profile, jobText);
+
+  // 6. Præference-bonus (op til +12)
   let prefBonus = 0;
   if (prefs) {
     if (prefs.workMode && prefs.workMode !== 'Ligegyldigt' && job.workMode === prefs.workMode) prefBonus += 6;
     if (prefs.industries?.length && prefs.industries.includes(job.industry)) prefBonus += 6;
   }
 
-  const total = Math.min(Math.max(Math.round(
-    skillScore*.45 + roleScore*.25 + senScore*.20 + kwScore*.10
-  ) + prefBonus, 10), 99);
+  const base = Math.round(skillScore*.40 + roleScore*.25 + senScore*.20 + kwScore*.15);
+  const total = Math.min(Math.max(base + transfer.bonus + prefBonus, 10), 99);
 
   // Reasons
   const reasons = [];
   if (matched.length > 0) reasons.push(`${matched.length} kompetencer matcher: ${matched.slice(0,3).join(", ")}`);
+  else if (transfer.reasons.length > 0) reasons.push(transfer.reasons[0]);
   else reasons.push("Ingen direkte kompetence-overlap");
-  if (roleScore >= 90) reasons.push("Stillingsniveauet passer din profil");
+  if (roleScore >= 90) reasons.push("Faglig retning passer perfekt");
   else if (roleScore >= 55) reasons.push("Delvist match på faglig retning");
+  if (transfer.bonus >= 10) reasons.push(`Stærke transferable skills til dette felt`);
   if (senScore >= 90) reasons.push("Erfaringskrav matcher dit niveau");
   else if (senScore < 40) reasons.push("Kræver mere erfaring end angivet i CV");
 
   // Skill gaps
   const gaps = [...jobSkills].filter(s => !cvSkills.has(s)).slice(0,4);
 
-  return { total, skillScore, roleScore, senScore, kwScore, matched, gaps, reasons };
+  return { total, skillScore, roleScore, senScore, kwScore, transferBonus: transfer.bonus, matched, gaps, reasons };
 }
 
 /* ═══════════════════════ FILE PARSERS ══════════════════════════════════════ */
