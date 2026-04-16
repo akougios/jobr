@@ -345,23 +345,31 @@ async function analyzeCV(rawText, fileName, onProgress) {
 
   // Prøv AI-endpoint
   let aiResult = null;
+  const aiUrl = `${API_BASE}/api/analyze-cv`;
+  console.log(`[AI] Kalder ${aiUrl} (${rawText.length} tegn)…`);
   try {
-    const resp = await fetch(`${API_BASE}/api/analyze-cv`, {
+    const resp = await fetch(aiUrl, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({text: rawText}),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(35000),
     });
+    console.log(`[AI] HTTP ${resp.status} ${resp.statusText}`);
     if (resp.ok) {
       const data = await resp.json();
+      console.log("[AI] Svar:", JSON.stringify(data).slice(0, 300));
       if (!data.fallback && Array.isArray(data.skills) && data.skills.length > 0) {
         aiResult = data;
-      } else if (data.fallback) {
-        console.warn("[AI] Fallback:", data.error);
+        console.log(`[AI] ✅ ${data.skills.length} skills via ${data.model}`);
+      } else {
+        console.warn("[AI] Fallback fra server:", data.error || "(ukendt fejl)", data);
       }
+    } else {
+      const txt = await resp.text().catch(() => '');
+      console.error(`[AI] Fejl HTTP ${resp.status}:`, txt.slice(0, 300));
     }
   } catch (e) {
-    console.warn("[AI] Endpoint ikke tilgængeligt – bruger regelbaseret analyse", e.message);
+    console.error("[AI] Fetch fejl:", e.name, e.message);
   }
 
   // Regelbaseret analyse (bruges altid til roller og ekstra data)
@@ -2151,8 +2159,19 @@ const UploadScreen = ({onProfile, initialFile}) => {
   const [state,setState]=useState(initialFile?'parsing':'idle');
   const [progress,setProgress]=useState([]);
   const [drag,setDrag]=useState(false);
+  const [aiStatus,setAiStatus]=useState(null); // null | {ok,ai_available,ai_type,ai_error}
   const fileRef=useRef();
   const started=useRef(false);
+
+  // Ping Railway /api/status ved mount
+  useEffect(()=>{
+    if(API_BASE) {
+      fetch(`${API_BASE}/api/status`,{signal:AbortSignal.timeout(8000)})
+        .then(r=>r.json())
+        .then(d=>setAiStatus(d))
+        .catch(()=>setAiStatus({ok:false,ai_available:false,ai_error:'Railway ikke tilgængelig'}));
+    }
+  },[]);
 
   const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const steps=["Læser fil...","Sender til AI-analyse...","Udtrækker kompetencer...","Analyserer karriereniveau...","Bygger profil..."];
@@ -2184,7 +2203,23 @@ const UploadScreen = ({onProfile, initialFile}) => {
           {state==='idle'&&(
             <>
               <h1 style={{fontSize:26,fontWeight:700,marginBottom:10}}>Upload dit CV</h1>
-              <p style={{color:'var(--muted)',fontSize:14,marginBottom:32}}>PDF, DOCX eller TXT – analyseres direkte i browseren</p>
+              <p style={{color:'var(--muted)',fontSize:14,marginBottom:16}}>PDF, DOCX eller TXT – analyseres direkte i browseren</p>
+              {/* AI status badge */}
+              {API_BASE && aiStatus !== null && (
+                <div style={{display:'inline-flex',alignItems:'center',gap:7,fontSize:12,padding:'5px 12px',marginBottom:20,
+                  background: aiStatus?.ai_available ? 'var(--green-bg)' : 'var(--surface-high)',
+                  border: `1px solid ${aiStatus?.ai_available ? 'var(--green-bd)' : 'var(--border2)'}`,
+                  color: aiStatus?.ai_available ? 'var(--green)' : 'var(--muted)',
+                }}>
+                  <span style={{width:6,height:6,borderRadius:'50%',background: aiStatus?.ai_available ? 'var(--green)' : 'var(--faint)',flexShrink:0}}/>
+                  {aiStatus?.ai_available
+                    ? `AI-analyse aktiv (${aiStatus.ai_type === 'openai' ? 'GPT-4o mini' : 'Claude Haiku'})`
+                    : aiStatus?.ok === false
+                      ? 'Railway ikke tilgængelig – bruger regelbaseret analyse'
+                      : `AI ikke aktiv: ${aiStatus?.ai_error || 'ingen API-nøgle'}`
+                  }
+                </div>
+              )}
               <div onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
                 onDrop={e=>{e.preventDefault();setDrag(false);run(e.dataTransfer.files[0])}}
                 onClick={()=>fileRef.current.click()}
