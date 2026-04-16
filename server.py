@@ -465,13 +465,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._cors(); self.send_header("Content-Length","0"); self.end_headers()
 
     def _cors(self):
-        origin = self.headers.get("Origin","")
-        # Tillad alle origins lokalt; på Railway kun kendte domæner
-        if os.environ.get("RAILWAY_ENVIRONMENT"):
-            allowed = next((o for o in ALLOWED_ORIGINS if o and o == origin), None)
-            self.send_header("Access-Control-Allow-Origin", allowed or ALLOWED_ORIGINS[-1])
-        else:
-            self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods","GET,POST,OPTIONS")
         self.send_header("Access-Control-Allow-Headers","Content-Type,Authorization")
 
