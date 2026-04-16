@@ -669,15 +669,17 @@ function parseJobnetData(data) {
 }
 
 async function fetchJobnetBrowser(offset=0, search='') {
-  // Kalder Vercel serverless function /api/jobs – kører server-side, ingen CORS-problemer
+  // Kalder Vercel serverless function /api/jobs (JSearch via RapidAPI)
   const params = new URLSearchParams({ offset, ...(search ? { q: search } : {}) });
-  const r = await fetch(`/api/jobs?${params}`, { signal: AbortSignal.timeout(15000) });
+  const r = await fetch(`/api/jobs?${params}`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`/api/jobs HTTP ${r.status}`);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
+  // JSearch returnerer allerede parsede jobs
+  if (Array.isArray(data.jobs)) return { jobs: data.jobs, total: data.total || data.jobs.length };
+  // Fallback: prøv Jobnet-format
   const jobs = parseJobnetData(data);
-  const total = data.TotalResultCount || jobs.length;
-  return { jobs, total };
+  return { jobs, total: data.TotalResultCount || jobs.length };
 }
 
 /* ═══════════════════════ FILE PARSERS ══════════════════════════════════════ */
