@@ -669,45 +669,15 @@ function parseJobnetData(data) {
 }
 
 async function fetchJobnetBrowser(offset=0, search='') {
-  const params = new URLSearchParams({ Offset:offset, SortValue:'NewestPosted', SearchString:search||'', widk:'true' });
-  const targetUrl = `${JOBNET_SEARCH}?${params}`;
-
-  // Prøv flere CORS-proxies i rækkefølge
-  const proxies = [
-    async () => {
-      // allorigins – returnerer { contents: "..." }
-      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(12000) });
-      if (!r.ok) throw new Error(`allorigins ${r.status}`);
-      const wrapper = await r.json();
-      if (!wrapper.contents) throw new Error('allorigins: tomt svar');
-      return JSON.parse(wrapper.contents);
-    },
-    async () => {
-      // corsproxy.io – returnerer direkte JSON
-      const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(12000) });
-      if (!r.ok) throw new Error(`corsproxy ${r.status}`);
-      return r.json();
-    },
-    async () => {
-      // crossorigin.me
-      const r = await fetch(`https://crossorigin.me/${targetUrl}`, { signal: AbortSignal.timeout(12000) });
-      if (!r.ok) throw new Error(`crossorigin.me ${r.status}`);
-      return r.json();
-    },
-  ];
-
-  let lastErr = '';
-  for (const tryProxy of proxies) {
-    try {
-      const data = await tryProxy();
-      const jobs = parseJobnetData(data);
-      if (jobs.length > 0) return { jobs, total: data.TotalResultCount || jobs.length };
-    } catch(e) {
-      lastErr = e.message;
-      console.warn('[Jobnet proxy fejl]', e.message);
-    }
-  }
-  throw new Error(`Alle proxies fejlede: ${lastErr}`);
+  // Kalder Vercel serverless function /api/jobs – kører server-side, ingen CORS-problemer
+  const params = new URLSearchParams({ offset, ...(search ? { q: search } : {}) });
+  const r = await fetch(`/api/jobs?${params}`, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`/api/jobs HTTP ${r.status}`);
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  const jobs = parseJobnetData(data);
+  const total = data.TotalResultCount || jobs.length;
+  return { jobs, total };
 }
 
 /* ═══════════════════════ FILE PARSERS ══════════════════════════════════════ */
