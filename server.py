@@ -462,7 +462,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self._cors(); self.send_header("Content-Length","0"); self.end_headers()
+        self.send_header("Content-Length","0"); self.end_headers()
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")

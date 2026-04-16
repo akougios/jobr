@@ -535,79 +535,128 @@ function getTransferBonus(profile, jobText) {
 
 function scoreJob(profile, job, prefs) {
   if (!profile) return null;
-  const jobText = norm(job.title+" "+job.description+" "+(job.keywords||[]).join(" "));
-  const jobSkillsRaw = extractSkillsFromText(job.title+" "+job.description+" "+(job.keywords||[]).join(" "));
-  const jobSkills = new Set(jobSkillsRaw.map(s=>s.name));
-  const cvSkills  = new Set(profile.skills.map(s=>s.name));
+  const jobText = norm(job.title + " " + job.description + " " + (job.keywords||[]).join(" "));
 
-  // 1. Skill overlap (40%) — explicit matches tæller fuldt, inferred 0.65
-  const cvSkillsMap = new Map(profile.skills.map(s=>[s.name, s]));
-  const matched = [...cvSkills].filter(s => jobSkills.has(s));
-  const weightedMatchScore = matched.reduce((sum, name) => {
-    const sk = cvSkillsMap.get(name);
-    return sum + (sk?.inferred ? 0.65 : 1.0);
-  }, 0);
-  const skillScore = jobSkills.size === 0 ? 50
-    : Math.round((weightedMatchScore / Math.max(jobSkills.size, 1)) * 100);
+  // ── 1. Skill overlap (40%) ─────────────────────────────────────────────────
+  // Scan the CV person's OWN skills directly in the job text — more reliable
+  // than trying to extract skills from JSearch English descriptions.
+  const cvSkillsMap = new Map(profile.skills.map(s => [norm(s.name), s]));
+  const matched = [];
+  let weightedMatch = 0;
 
-  // 2. Role family match (25%)
-  const jobFamily = detectRoleFamily(jobSkillsRaw, job.title);
+  cvSkillsMap.forEach((sk, skillName) => {
+    if (skillName.length < 2) return;
+    const escaped = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, 'i');
+    if (re.test(jobText)) {
+      matched.push(sk.name);
+      weightedMatch += sk.inferred ? 0.65 : 1.0;
+    }
+  });
+
+  // Also match job.keywords list against CV skill names
+  const jobKwSet = new Set((job.keywords||[]).map(k => norm(k)));
+  cvSkillsMap.forEach((sk, skillName) => {
+    if (!matched.includes(sk.name) && jobKwSet.has(skillName)) {
+      matched.push(sk.name);
+      weightedMatch += sk.inferred ? 0.65 : 1.0;
+    }
+  });
+
+  // Score: how many of the profile's top 15 skills appear in the job?
+  const topN = Math.min(profile.skills.length, 15);
+  const skillScore = topN === 0 ? 50
+    : Math.min(Math.round((weightedMatch / Math.max(topN * 0.4, 2)) * 100), 100);
+
+  // ── 2. Role family match (25%) ─────────────────────────────────────────────
+  // Industry label from api/jobs.js → profile roleFamily
+  const jobIndustryMap = {
+    'Frontend':      'Frontend',
+    'Cloud & DevOps':'Cloud & DevOps',
+    'Data & AI':     'Data & AI',
+    'Mobile':        'Mobile',
+    'Design':        'Design',
+    'IT/Tech':       'Backend',       // generic tech → Backend as proxy
+    'Marketing':     'Marketing',
+    'Finans':        'Forretning',
+    'Salg':          'Forretning',
+    'HR':            'Forretning',
+    'Produkt':       'Produkt & Agile',
+    'Ledelse':       'Forretning',
+  };
+  const jobFamilyFromIndustry = jobIndustryMap[job.industry] || null;
+  const jobSkillsRaw = extractSkillsFromText(job.title + " " + (job.keywords||[]).join(" "));
+  const jobFamilyFromTitle = detectRoleFamily(jobSkillsRaw, job.title);
+  const jobFamily = jobFamilyFromIndustry || jobFamilyFromTitle;
+
+  // "IT/Tech" covers all tech sub-families so give partial credit to any tech profile
+  const isTechJob = ['Frontend','Backend','Cloud & DevOps','Mobile','Data & AI'].includes(jobFamily);
+  const isTechProfile = ['Frontend','Backend','Cloud & DevOps','Mobile','Data & AI'].includes(profile.roleFamily);
   const roleScore = profile.roleFamily === jobFamily ? 100
-    : (profile.skills.some(s => s.cat === jobFamily) ? 60 : 30);
+    : (profile.skills.some(s => s.cat === jobFamily) ? 65
+    : (isTechJob && isTechProfile ? 55        // different tech specialty, still relevant
+    : (profile.roleFamily === 'Forretning' && ['Marketing','Salg','HR','Produkt','Ledelse','Finans'].includes(job.industry) ? 60
+    : 30)));
 
-  // 3. Seniority match (20%)
-  let senScore = 70;
-  // Brug job.reqYears hvis tilgængeligt (fra JSearch), ellers regex på tekst
+  // ── 3. Seniority match (20%) ───────────────────────────────────────────────
+  let senScore = 70; // neutral default
   const reqYears = job.reqYears ?? (() => {
-    const m = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*(?:erfaring|experience)/i);
+    const m = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*(?:of\s*)?(?:erfaring|experience)/i);
     return m ? parseInt(m[1]) : null;
   })();
   if (reqYears) {
     const yrs = profile.years ?? 0;
     const diff = yrs - reqYears;
-    if (diff >= 0 && diff <= 4) senScore = 100;
-    else if (diff > 4) senScore = 80;
-    else if (diff >= -1) senScore = 60;
-    else senScore = 35;
+    if (diff >= 0 && diff <= 4)  senScore = 100;
+    else if (diff > 4)           senScore = 80;
+    else if (diff >= -1)         senScore = 65;
+    else                         senScore = 35;
   }
-  // Bonus hvis job-seniority matcher profil-seniority direkte
-  if (job.seniority && profile.seniority && job.seniority === profile.seniority) senScore = Math.min(senScore + 15, 100);
+  // Direct seniority label match gives extra bonus
+  if (job.seniority && profile.seniority) {
+    if (job.seniority === profile.seniority) senScore = Math.min(senScore + 15, 100);
+    else if (Math.abs(['Junior','Mid-level','Senior','Lead / Manager'].indexOf(job.seniority)
+                    - ['Junior','Mid-level','Senior','Lead / Manager'].indexOf(profile.seniority)) <= 1)
+      senScore = Math.min(senScore + 5, 100);
+  }
 
-  // 4. Keyword density (10%)
+  // ── 4. Keyword density (15%) ───────────────────────────────────────────────
   const allKws = [
-    ...(profile.keywords || []).slice(0,15),
-    ...(profile.context_keywords || []).slice(0,10),
-  ];
-  let kwScore = 0;
-  allKws.forEach(k => { if (k && jobText.includes(norm(k))) kwScore += 100/allKws.length; });
-  kwScore = Math.round(Math.min(kwScore, 100));
+    ...(profile.keywords || []).slice(0, 15),
+    ...(profile.context_keywords || []).slice(0, 8),
+    ...(profile.domains || []).slice(0, 4),
+  ].filter(Boolean);
+  let kwHits = 0;
+  allKws.forEach(k => { if (jobText.includes(norm(k))) kwHits++; });
+  const kwScore = allKws.length === 0 ? 50
+    : Math.round(Math.min((kwHits / Math.max(allKws.length * 0.3, 2)) * 100, 100));
 
-  // 5. Cross-domain / transferable bonus (op til +25)
+  // ── 5. Transferable skills bonus (op til +25) ──────────────────────────────
   const transfer = getTransferBonus(profile, jobText);
 
-  // 6. Præference-bonus (op til +12)
+  // ── 6. Præference-bonus (op til +12) ──────────────────────────────────────
   let prefBonus = 0;
   if (prefs) {
     if (prefs.workMode && prefs.workMode !== 'Ligegyldigt' && job.workMode === prefs.workMode) prefBonus += 6;
     if (prefs.industries?.length && prefs.industries.includes(job.industry)) prefBonus += 6;
   }
 
-  const base = Math.round(skillScore*.40 + roleScore*.25 + senScore*.20 + kwScore*.15);
+  const base = Math.round(skillScore * 0.40 + roleScore * 0.25 + senScore * 0.20 + kwScore * 0.15);
   const total = Math.min(Math.max(base + transfer.bonus + prefBonus, 10), 99);
 
-  // Reasons
+  // ── Reasons ────────────────────────────────────────────────────────────────
   const reasons = [];
-  if (matched.length > 0) reasons.push(`${matched.length} kompetencer matcher: ${matched.slice(0,3).join(", ")}`);
-  else if (transfer.reasons.length > 0) reasons.push(transfer.reasons[0]);
-  else reasons.push("Ingen direkte kompetence-overlap");
-  if (roleScore >= 90) reasons.push("Faglig retning passer perfekt");
-  else if (roleScore >= 55) reasons.push("Delvist match på faglig retning");
-  if (transfer.bonus >= 10) reasons.push(`Stærke transferable skills til dette felt`);
-  if (senScore >= 90) reasons.push("Erfaringskrav matcher dit niveau");
-  else if (senScore < 40) reasons.push("Kræver mere erfaring end angivet i CV");
+  if (matched.length > 0)           reasons.push(`${matched.length} kompetencer matcher: ${matched.slice(0,3).join(", ")}`);
+  else if (transfer.reasons.length)  reasons.push(transfer.reasons[0]);
+  else                               reasons.push("Ingen direkte kompetence-overlap");
+  if (roleScore >= 90)               reasons.push("Faglig retning passer perfekt");
+  else if (roleScore >= 60)          reasons.push("Delvist match på faglig retning");
+  if (transfer.bonus >= 10)          reasons.push("Stærke transferable skills til dette felt");
+  if (senScore >= 90)                reasons.push("Erfaringskrav matcher dit niveau");
+  else if (senScore < 40)            reasons.push("Kræver mere erfaring end angivet i CV");
 
-  // Skill gaps
-  const gaps = [...jobSkills].filter(s => !cvSkills.has(s)).slice(0,4);
+  // Skill gaps: job keywords the CV person doesn't have
+  const gaps = (job.keywords || []).filter(k => !cvSkillsMap.has(norm(k))).slice(0, 4);
 
   return { total, skillScore, roleScore, senScore, kwScore, transferBonus: transfer.bonus, matched, gaps, reasons };
 }

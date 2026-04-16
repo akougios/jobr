@@ -32,33 +32,57 @@ module.exports = async function handler(req, res) {
     const data = await r.json();
     const raw  = data.data || [];
 
-    // Udvidet keyword-liste: både dansk og engelsk (JSearch returnerer mix)
+    // Udvidet keyword-liste: både dansk og engelsk (bruger word-boundary check)
     const SKILL_KW = [
-      // Tech
-      'python','javascript','typescript','react','vue','angular','node','sql','java','golang','rust','php',
-      'docker','kubernetes','aws','azure','gcp','linux','git','ci/cd','devops','api','cloud',
-      'machine learning','nlp','tensorflow','pytorch','data science','power bi','tableau','spark',
+      // Frontend
+      'react','vue','angular','svelte','typescript','javascript','html','css','scss','tailwind',
+      'webpack','vite','next.js','redux','graphql',
+      // Backend
+      'python','node.js','java','golang','rust','php','django','fastapi','flask','spring',
+      'microservices','rest api','express',
+      // Data & AI
+      'sql','postgresql','mysql','mongodb','redis','machine learning','nlp','tensorflow','pytorch',
+      'data science','power bi','tableau','pandas','spark','dbt','airflow',
+      // Cloud & DevOps
+      'docker','kubernetes','aws','azure','gcp','linux','terraform','ci/cd','github actions',
+      'devops','ansible','grafana','nginx',
       // Design
-      'figma','sketch','ux','ui','user research','prototyping','wireframing','adobe',
-      // Business
-      'excel','powerpoint','scrum','agile','kanban','jira','okr','kpi','project management',
-      'kommunikation','ledelse','projektledelse','salg','marketing','seo','sem','b2b','saas','crm',
-      'hubspot','salesforce','google analytics','content','stakeholder','strategy','budget',
-      // English equivalents
-      'leadership','management','communication','sales','finance','accounting','recruitment',
-      'product management','product owner','business development','customer success',
+      'figma','sketch','ux','user research','prototyping','wireframing','adobe xd','illustrator',
+      'design systems','accessibility',
+      // Produkt & Agile
+      'scrum','agile','kanban','jira','confluence','product management','product owner',
+      'project management','okr','kpi','roadmap',
+      // Marketing
+      'seo','sem','google ads','hubspot','salesforce','google analytics','content marketing',
+      'email marketing','crm','b2b','saas','growth hacking','copywriting',
+      // Forretning & Bløde
+      'excel','powerpoint','communication','leadership','management','stakeholder',
+      'business development','strategy','budget','finance','accounting','recruitment',
+      'kommunikation','ledelse','projektledelse','strategi',
     ];
 
+    // Word-boundary check for kort keywords for at undgå falske match (sql ≠ nosql)
+    const kwMatch = (txt, kw) => {
+      if (kw.length <= 4) {
+        const re = new RegExp(`(?<![a-z])${kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(?![a-z])`, 'i');
+        return re.test(txt);
+      }
+      return txt.includes(kw);
+    };
+
     const INDUSTRY = [
-      ['IT/Tech',   ['developer','software','engineer','frontend','backend','devops','programmer','tech lead']],
-      ['Design',    ['designer','ux','ui','graphic','creative','visual','brand']],
-      ['Data & AI', ['data scientist','data analyst','machine learning','business intelligence','analytics','mlops']],
-      ['Marketing', ['marketing','seo','content','brand','growth','communications','pr ','social media']],
-      ['Finans',    ['finance','financial','accounting','controller','økonomi','revisor','regnskab','bank']],
-      ['Salg',      ['sales','account executive','account manager','sælger','business development','customer success']],
-      ['HR',        ['recruiter','recruitment','talent','people','hr ','human resources','personale']],
-      ['Produkt',   ['product manager','product owner','scrum master','projektleder','project manager']],
-      ['Ledelse',   ['director','manager','head of','cto','cfo','coo','lead','chef','leder']],
+      ['Frontend',      ['frontend developer','frontend engineer','react developer','vue developer','angular developer','ui developer','web developer']],
+      ['Cloud & DevOps',['devops','platform engineer','site reliability','infrastructure','cloud engineer','cloud architect','sre ']],
+      ['Data & AI',     ['data scientist','data analyst','machine learning','business intelligence','analytics','mlops','data engineer']],
+      ['Mobile',        ['ios developer','android developer','mobile developer','react native','flutter']],
+      ['Design',        ['ux designer','ui designer','product designer','graphic designer','visual designer','art director']],
+      ['IT/Tech',       ['developer','software engineer','backend','programmer','tech lead','it consultant','solution architect']],
+      ['Marketing',     ['marketing','seo','content','brand','growth','communications','social media']],
+      ['Finans',        ['finance','financial','accounting','controller','økonomi','revisor','regnskab','bank']],
+      ['Salg',          ['sales','account executive','account manager','sælger','business development','customer success']],
+      ['HR',            ['recruiter','recruitment','talent','people partner','hr ','human resources','personale']],
+      ['Produkt',       ['product manager','product owner','scrum master','projektleder','project manager']],
+      ['Ledelse',       ['director','head of','cto','cfo','coo','chief','vp of','chef','leder']],
     ];
 
     const jobs = raw.map((j, i) => {
@@ -66,9 +90,13 @@ module.exports = async function handler(req, res) {
       const posted    = j.job_posted_at_datetime_utc || '';
       const days      = posted ? Math.floor((Date.now() - new Date(posted)) / 86400000) : 99;
       const postedTxt = days === 0 ? 'I dag' : days === 1 ? 'I går' : days < 7 ? `${days} dage siden` : days < 14 ? '1 uge siden' : `${Math.floor(days/7)} uger siden`;
-      const txt       = (j.job_title + ' ' + desc).toLowerCase();
-      const kws       = SKILL_KW.filter(k => txt.includes(k));
-      const industry  = (INDUSTRY.find(([, kws]) => kws.some(k => txt.includes(k))) || ['Andet'])[0];
+      const titleTxt  = (j.job_title || '').toLowerCase();
+      const txt       = (titleTxt + ' ' + desc).toLowerCase();
+      const kws       = SKILL_KW.filter(k => kwMatch(txt, k));
+      // Industry: match on title first (more precise), then fall back to full text
+      const industry  = (INDUSTRY.find(([, hints]) => hints.some(h => titleTxt.includes(h)))
+                      || INDUSTRY.find(([, hints]) => hints.some(h => txt.includes(h)))
+                      || ['Andet'])[0];
       const mode      = j.job_is_remote ? 'Remote' : txt.includes('hybrid') ? 'Hybrid' : 'Kontor';
 
       // Udled seniority fra titel og beskrivelse
