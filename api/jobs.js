@@ -32,16 +32,33 @@ module.exports = async function handler(req, res) {
     const data = await r.json();
     const raw  = data.data || [];
 
-    const SKILL_KW = ['python','javascript','typescript','react','sql','java','golang','docker','kubernetes','aws','azure','figma','ux','scrum','agile','excel','power bi','kommunikation','ledelse','projektledelse','seo','b2b','saas'];
+    // Udvidet keyword-liste: både dansk og engelsk (JSearch returnerer mix)
+    const SKILL_KW = [
+      // Tech
+      'python','javascript','typescript','react','vue','angular','node','sql','java','golang','rust','php',
+      'docker','kubernetes','aws','azure','gcp','linux','git','ci/cd','devops','api','cloud',
+      'machine learning','nlp','tensorflow','pytorch','data science','power bi','tableau','spark',
+      // Design
+      'figma','sketch','ux','ui','user research','prototyping','wireframing','adobe',
+      // Business
+      'excel','powerpoint','scrum','agile','kanban','jira','okr','kpi','project management',
+      'kommunikation','ledelse','projektledelse','salg','marketing','seo','sem','b2b','saas','crm',
+      'hubspot','salesforce','google analytics','content','stakeholder','strategy','budget',
+      // English equivalents
+      'leadership','management','communication','sales','finance','accounting','recruitment',
+      'product management','product owner','business development','customer success',
+    ];
+
     const INDUSTRY = [
-      ['IT/Tech',   ['developer','software','engineer','frontend','backend','devops']],
-      ['Design',    ['designer','ux','ui','grafisk','kreativ']],
-      ['Data & AI', ['data scientist','analytiker','machine learning','analyst']],
-      ['Marketing', ['marketing','seo','content','brand','kommunikation']],
-      ['Finans',    ['finans','økonomi','revisor','regnskab','controller']],
-      ['Salg',      ['sælger','salg','account','sales','business development']],
-      ['HR',        ['rekruttering','talent','people','hr']],
-      ['Produkt',   ['product manager','product owner','projektleder','scrum master']],
+      ['IT/Tech',   ['developer','software','engineer','frontend','backend','devops','programmer','tech lead']],
+      ['Design',    ['designer','ux','ui','graphic','creative','visual','brand']],
+      ['Data & AI', ['data scientist','data analyst','machine learning','business intelligence','analytics','mlops']],
+      ['Marketing', ['marketing','seo','content','brand','growth','communications','pr ','social media']],
+      ['Finans',    ['finance','financial','accounting','controller','økonomi','revisor','regnskab','bank']],
+      ['Salg',      ['sales','account executive','account manager','sælger','business development','customer success']],
+      ['HR',        ['recruiter','recruitment','talent','people','hr ','human resources','personale']],
+      ['Produkt',   ['product manager','product owner','scrum master','projektleder','project manager']],
+      ['Ledelse',   ['director','manager','head of','cto','cfo','coo','lead','chef','leder']],
     ];
 
     const jobs = raw.map((j, i) => {
@@ -54,14 +71,27 @@ module.exports = async function handler(req, res) {
       const industry  = (INDUSTRY.find(([, kws]) => kws.some(k => txt.includes(k))) || ['Andet'])[0];
       const mode      = j.job_is_remote ? 'Remote' : txt.includes('hybrid') ? 'Hybrid' : 'Kontor';
 
+      // Udled seniority fra titel og beskrivelse
+      const seniorityHints = {
+        'Junior':        ['junior','entry level','graduate','nyuddannet','studerende','trainee'],
+        'Mid-level':     ['mid','medior','experienced','erfaren'],
+        'Senior':        ['senior','specialist','expert','principal','lead developer'],
+        'Lead / Manager':['manager','director','head of','chef','leder','lead','cto','cfo'],
+      };
+      const seniority = Object.entries(seniorityHints).find(([, hints]) => hints.some(h => txt.includes(h)))?.[0] || '';
+
+      // Udled erfaringsår fra tekst
+      const yrsMatch = txt.match(/(\d+)\+?\s*years?\s*(?:of\s*)?experience|(\d+)\+?\s*års?\s*erfaring/i);
+      const reqYears = yrsMatch ? parseInt(yrsMatch[1] || yrsMatch[2]) : null;
+
       return {
         id:          `js-${j.job_id || i}`,
         title:       j.job_title || 'Stilling',
         company:     j.employer_name || 'Ukendt',
         location:    [j.job_city, j.job_country].filter(Boolean).join(', ') || 'Danmark',
-        type:        j.job_employment_type || 'Fuldtid',
+        type:        j.job_employment_type || 'FULLTIME',
         workMode:    mode,
-        salary:      '',
+        salary:      j.job_min_salary ? `${Math.round(j.job_min_salary).toLocaleString()}–${Math.round(j.job_max_salary||j.job_min_salary*1.3).toLocaleString()} kr/md` : '',
         description: desc,
         keywords:    kws,
         posted:      postedTxt,
@@ -70,6 +100,8 @@ module.exports = async function handler(req, res) {
         source:      'jsearch',
         sourceLabel: 'JSearch',
         industry,
+        seniority,
+        reqYears,
       };
     });
 

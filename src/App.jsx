@@ -557,16 +557,21 @@ function scoreJob(profile, job, prefs) {
 
   // 3. Seniority match (20%)
   let senScore = 70;
-  const reqMatch = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*(?:erfaring|experience)/i);
-  if (reqMatch) {
-    const req = parseInt(reqMatch[1]);
+  // Brug job.reqYears hvis tilgængeligt (fra JSearch), ellers regex på tekst
+  const reqYears = job.reqYears ?? (() => {
+    const m = jobText.match(/(\d+)\+?\s*(?:år|years?)\s*(?:erfaring|experience)/i);
+    return m ? parseInt(m[1]) : null;
+  })();
+  if (reqYears) {
     const yrs = profile.years ?? 0;
-    const diff = yrs - req;
+    const diff = yrs - reqYears;
     if (diff >= 0 && diff <= 4) senScore = 100;
     else if (diff > 4) senScore = 80;
     else if (diff >= -1) senScore = 60;
     else senScore = 35;
   }
+  // Bonus hvis job-seniority matcher profil-seniority direkte
+  if (job.seniority && profile.seniority && job.seniority === profile.seniority) senScore = Math.min(senScore + 15, 100);
 
   // 4. Keyword density (10%)
   const allKws = [
