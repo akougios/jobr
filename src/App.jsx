@@ -1272,7 +1272,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
               Se dine job-matches<Ic n="arrow" s={14}/>
             </button>
             <p style={{fontSize:11,color:'var(--faint)',textAlign:'center',lineHeight:1.5}}>
-              Alle {(jobs||MOCK_JOBS).length} job scores nu mod din præcise profil
+              {jobs?.length > 0 ? `${jobs.length} job scores nu mod din præcise profil` : 'Job hentes automatisk i baggrunden'}
             </p>
           </div>
         </div>
@@ -1365,7 +1365,7 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
   ).slice(0, 5);
 
   const handleDone = () => onDone({
-    workMode, industries, salary, status,
+    industries, status,
     location: city || cityInput,
     mobility,
     contractType,
@@ -1391,7 +1391,7 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
         <div style={{marginBottom:32, textAlign:'center'}}>
           <div style={{width:44,height:44,background:'var(--green-bg)',border:'1px solid var(--green-bd)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:20}}>✓</div>
           <h1 style={{fontSize:26,fontWeight:400,letterSpacing:'-.02em',marginBottom:6,fontFamily:'Newsreader,Georgia,serif'}}>Profil klar!</h1>
-          <p style={{color:'var(--muted)',fontSize:14,lineHeight:1.6}}>Besvar disse spørgsmål — vi bruger dem til at beregne præcise match-scores.</p>
+          <p style={{color:'var(--muted)',fontSize:14,lineHeight:1.6}}>4 hurtige spørgsmål — vi bruger svarene til at beregne præcise match-scores.</p>
         </div>
 
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
@@ -1427,21 +1427,9 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q2: Arbejdsform */}
+          {/* Q2: Kontrakttype */}
           <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="2">Hvilken arbejdsform foretrækker du?</SectionLabel>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {PREF_WORK_MODES.map(({val,icon,label})=>(
-                <PrefChip key={val} selected={workMode===val} onClick={()=>setWorkMode(val)}>
-                  {icon} {label}
-                </PrefChip>
-              ))}
-            </div>
-          </div>
-
-          {/* Q3: Kontrakttype */}
-          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="3">Hvilken type stilling søger du?</SectionLabel>
+            <SectionLabel n="2">Hvilken type stilling søger du?</SectionLabel>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_CONTRACT.map(({val,label})=>(
                 <PrefChip key={val} selected={contractType===val} onClick={()=>setContractType(val)}>
@@ -1451,9 +1439,9 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q4: Brancher */}
+          {/* Q3: Brancher */}
           <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="4">Hvilke brancher interesserer dig?</SectionLabel>
+            <SectionLabel n="3">Hvilke brancher interesserer dig?</SectionLabel>
             <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Vælg gerne flere</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_INDUSTRIES.map(ind=>(
@@ -1464,21 +1452,9 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q5: Løn */}
+          {/* Q4: Status */}
           <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="5">Hvad er dit lønniveau? <span style={{fontWeight:400,color:'var(--faint)',fontSize:11}}>(månedlig brutto, valgfrit)</span></SectionLabel>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {PREF_SALARIES.map(s=>(
-                <PrefChip key={s} selected={salary===s} onClick={()=>setSalary(prev=>prev===s?null:s)}>
-                  {s} kr/md
-                </PrefChip>
-              ))}
-            </div>
-          </div>
-
-          {/* Q6: Status */}
-          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="6">Hvor aktivt søger du?</SectionLabel>
+            <SectionLabel n="4">Hvor aktivt søger du?</SectionLabel>
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {PREF_STATUS.map(({val,label,sub})=>(
                 <PrefRadio key={val} selected={status===val} onClick={()=>setStatus(val)} label={label} sub={sub}/>
@@ -2103,10 +2079,13 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
             {/* Count bar */}
             <div style={{padding:'6px 14px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--surface)',flexShrink:0}}>
               <span style={{fontSize:12,color:'var(--muted)'}}>
-                <strong style={{color:'var(--text)'}}>{filtered.length}</strong> job
-                {!realJobs&&<span style={{color:'var(--faint)'}}> · demo-data</span>}
-                {realJobs&&<span style={{color:'var(--green)'}}> · Jobnet.dk</span>}
-                {profile&&<span style={{color:'var(--green)'}}> · sorteret efter match</span>}
+                {jobsLoading && jobsDB.length === 0
+                  ? <span style={{color:'var(--faint)'}}>Henter job…</span>
+                  : <><strong style={{color:'var(--text)'}}>{filtered.length}</strong> job
+                    {jobsLoaded && <span style={{color:'var(--green)'}}> · live</span>}
+                    {profile && <span style={{color:'var(--green)'}}> · sorteret efter match</span>}
+                  </>
+                }
               </span>
               <button onClick={handleRefresh} disabled={refreshing}
                 style={{fontSize:11,color:'var(--navy)',display:'flex',alignItems:'center',gap:3,padding:'2px 7px',border:'none',background:'var(--accent-bg)',opacity:refreshing?.6:1}}>
@@ -2117,16 +2096,25 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
 
             {/* Job list */}
             <div style={{flex:1,overflowY:'auto'}}>
-              {filtered.length===0
-                ? <div style={{padding:32,textAlign:'center',color:'var(--muted)',fontSize:13}}>
-                    {tab==='gemt'?'Ingen gemte job endnu.':'Ingen job matcher filtrene.'}
+              {/* Loading state — ingen jobs hentet endnu */}
+              {jobsLoading && jobsDB.length === 0
+                ? <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:14,color:'var(--muted)',padding:32}}>
+                    <span className="spin" style={{color:'var(--navy)'}}><Ic n="loader" s={28}/></span>
+                    <div style={{fontSize:13,textAlign:'center'}}>
+                      <div style={{fontWeight:500,marginBottom:4}}>Henter job...</div>
+                      <div style={{fontSize:12,color:'var(--faint)'}}>Søger blandt tusindvis af danske stillinger</div>
+                    </div>
                   </div>
-                : filtered.map(j=>(
-                  <JobRow key={j.id} job={j} match={matches[j.id]}
-                    selected={selected?.id===j.id} onSelect={()=>setSelected(j)}
-                    saved={savedIds.includes(j.id)} applied={isApplied(j.id)}
-                    onSave={toggleSave}/>
-                ))
+                : filtered.length===0
+                  ? <div style={{padding:32,textAlign:'center',color:'var(--muted)',fontSize:13}}>
+                      {tab==='gemt'?'Ingen gemte job endnu.':'Ingen job matcher filtrene.'}
+                    </div>
+                  : filtered.map(j=>(
+                    <JobRow key={j.id} job={j} match={matches[j.id]}
+                      selected={selected?.id===j.id} onSelect={()=>setSelected(j)}
+                      saved={savedIds.includes(j.id)} applied={isApplied(j.id)}
+                      onSave={toggleSave}/>
+                  ))
               }
 
               {/* Opdagede muligheder */}
@@ -2364,7 +2352,7 @@ const App = () => {
   const [pendingFile,setPendingFile]= useState(null);
   const [profile,setProfile]       = useState(null);
   const [prefs,setPrefs]           = useState(null);
-  const [jobsData,setJobsData]     = useState(MOCK_JOBS);
+  const [jobsData,setJobsData]     = useState([]);
   const [jobsLoaded,setJobsLoaded] = useState(false);
   const [jobsTotal,setJobsTotal]   = useState(0);
   const [jobsLoading,setJobsLoading]= useState(false);
@@ -2424,31 +2412,33 @@ const App = () => {
     loadProfile();
   },[authReady, user]);
 
-  // Hent jobs direkte fra Jobnet via browser (ingen Railway nødvendig)
+  // Hent jobs parallelt — alle sider på én gang så brugeren ikke venter
   const loadJobs = useCallback(async (reset=false) => {
     setJobsLoading(true);
     try {
-      const pages = 5; // 5×20 = 100 jobs
-      let all = reset ? [] : (jobsData === MOCK_JOBS ? [] : [...jobsData]);
-      const startOffset = reset ? 0 : (jobsData === MOCK_JOBS ? 0 : jobsData.length);
-      for(let i = 0; i < pages; i++) {
-        const offset = startOffset + i * 20;
-        const { jobs, total } = await fetchJobnetBrowser(offset);
-        if(!jobs || jobs.length === 0) break;
-        all = [...all, ...jobs];
-        if(i === 0) { setJobsData(all); setJobsLoaded(true); setJobsTotal(total||0); }
+      const pages = 3; // 3 parallelle kald = ~60-90 jobs
+      const offsets = Array.from({length: pages}, (_, i) => i * 20);
+      const results = await Promise.allSettled(
+        offsets.map(offset => fetchJobnetBrowser(offset))
+      );
+      const all = results
+        .filter(r => r.status === 'fulfilled' && r.value?.jobs?.length)
+        .flatMap(r => r.value.jobs);
+      const total = results.find(r => r.status === 'fulfilled')?.value?.total || all.length;
+
+      if (all.length > 0) {
+        // Dedupliker på id
+        const seen = new Set();
+        const unique = all.filter(j => { if (seen.has(j.id)) return false; seen.add(j.id); return true; });
+        setJobsData(unique);
+        setJobsLoaded(true);
+        setJobsTotal(total);
       }
-      if(all.length > 0) { setJobsData(all); setJobsLoaded(true); }
     } catch(e) {
-      console.warn('Jobnet browser fetch fejl:', e.message);
-      // Prøv Railway som fallback
-      try {
-        const r = await fetch(`${API_BASE}/api/jobs?offset=0`);
-        if(r.ok) { const d = await r.json(); if(d.jobs?.length) { setJobsData(d.jobs); setJobsLoaded(true); setJobsTotal(d.total||0); } }
-      } catch(e2) { console.warn('Railway fallback fejl:', e2.message); }
+      console.warn('Jobs fetch fejl:', e.message);
     }
     setJobsLoading(false);
-  }, [jobsData]);
+  }, []);
 
   useEffect(()=>{ loadJobs(true); },[]);
 
