@@ -751,6 +751,16 @@ function computeTitleAlignment(profile, job) {
     if (jobTitle.includes(adjN)) score = Math.max(score, 85);
   });
 
+  // c2) Wildcard roles: "overraskende men realistiske" jobs AI fandt (fx barista→hospitality)
+  (profile.wildcard_roles||[]).forEach(adj => {
+    const adjN = norm(adj);
+    const adjWords = adjN.split(/\s+/).filter(w => w.length > 4);
+    const hits = titleWords.filter(w => adjWords.includes(w)).length;
+    if (hits >= 2) score = Math.max(score, 72);
+    else if (hits === 1) score = Math.max(score, 55);
+    if (jobTitle.includes(adjN)) score = Math.max(score, 76);
+  });
+
   // d) Industri-label som proxy
   const IND_SCORE = {
     'Frontend': profile.roleFamily==='Frontend'?90:(['Backend','Mobile','Data & AI'].includes(profile.roleFamily)?55:30),
@@ -903,14 +913,25 @@ function scoreJob(profile, job, prefs) {
   const jobText  = norm(job.title + ' ' + job.description + ' ' + (job.keywords||[]).join(' '));
   const jobTitle = norm(job.title);
 
+  // ── Beskrivelseskvalitet: kort beskrivelse → dæmp skill-confidence ─────────
+  const descLen = (job.description || '').length;
+  const descQuality = descLen < 120 ? 0.6 : descLen < 300 ? 0.8 : 1.0;
+
   // ── Beregn alle dimensioner ────────────────────────────────────────────────
-  const { score: coverageScore, matched, jobSkillSet } = computeSkillCoverage(profile, job);
+  const { score: rawCoverageScore, matched, jobSkillSet, jobReqs } = computeSkillCoverage(profile, job);
+  const coverageScore = Math.round(rawCoverageScore * descQuality + rawCoverageScore * (1 - descQuality) * 0.5);
+
   const titleScore  = computeTitleAlignment(profile, job);
   const senScore    = computeSeniorityFit(profile, job, jobText);
   const kwScore     = computeKeywordDensity(profile, jobText);
   const domainScore = computeDomainMatch(profile, jobText);
 
-  // ── Nye dimensioner ────────────────────────────────────────────────────────
+  // ── Nyuddannet-portal: boost tydelige entry-level/graduate stillinger ──────
+  const isGradJob = /junior|graduate|entry.?level|nyuddannet|trainee|lærling|praktikant|studiejob|student(?:er)?(?:medhjælper)?/i.test(job.title + ' ' + job.description);
+  const isJunior  = (profile.years ?? 10) <= 2 || profile.seniority === 'Junior';
+  const gradBonus = isGradJob && isJunior ? 8 : 0;
+
+  // ── Lokations- og præferencedimensioner ───────────────────────────────────
   const locationScore  = computeLocationFit(job, prefs);
   const languageScore  = computeLanguageFit(profile, job);
   const educationScore = computeEducationFit(profile, jobText);
@@ -919,53 +940,79 @@ function scoreJob(profile, job, prefs) {
   // ── Bonuser ────────────────────────────────────────────────────────────────
   const transfer = getTransferBonus(profile, jobText);
   const aiBonus  = computeAIContextBonus(profile, jobText, jobTitle);
-
-  // Industri-præference bonus (+5)
   const indBonus = prefs?.industries?.length && prefs.industries.includes(job.industry) ? 5 : 0;
 
-  // ── Samlet score: 9 dimensioner ────────────────────────────────────────────
-  // Fordeling tager udgangspunkt i hvad jobsøgere faktisk prioriterer:
+  // ── Samlet score: vægte skills+titel højere (de er kernerelevansen) ────────
   const base = Math.round(
-    coverageScore  * 0.26 +  // Skills: hvad jobbet kræver, har du?
-    titleScore     * 0.18 +  // Rolle-alignment: er det din type job?
-    locationScore  * 0.15 +  // Lokation: kan du komme derhen?
-    senScore       * 0.14 +  // Seniority: passer erfaringsniveauet?
-    kwScore        * 0.10 +  // Kontekstnøgleord: faglig baggrund
-    languageScore  * 0.08 +  // Sprog: kræver jobbet dansk/engelsk?
+    coverageScore  * 0.28 +  // Skills: hvad jobbet kræver, har du?
+    titleScore     * 0.20 +  // Rolle-alignment: er det din type job?
+    locationScore  * 0.14 +  // Lokation: kan du komme derhen?
+    senScore       * 0.13 +  // Seniority: passer erfaringsniveauet?
+    kwScore        * 0.10 +  // Kontekstnøgleord: faglig kontekst
+    languageScore  * 0.07 +  // Sprog: kræver jobbet dansk/engelsk?
     educationScore * 0.05 +  // Uddannelse: opfylder du formelle krav?
     contractScore  * 0.02 +  // Kontrakttype: fuldtid/studiejob/deltid
-    domainScore    * 0.02     // Domæne: branche-erfaring
+    domainScore    * 0.01     // Domæne: branche-erfaring
   );
-  const total = Math.min(Math.max(base + transfer.bonus + aiBonus + indBonus, 10), 99);
+
+  const rawTotal = base + transfer.bonus + aiBonus + indBonus + gradBonus;
+
+  // ── Relevans-gate: hvis skills + titel begge er svage, begrænser vi totalen ─
+  // Forhindrer at "forkerte" jobs scorer 50% pga. god location/sprog alene.
+  const relevance = coverageScore * 0.55 + titleScore * 0.45;
+  const relevanceCap =
+    relevance < 15 ? 44 :   // Klart irrelevant: maks ~44%
+    relevance < 28 ? 56 :   // Svagt match: maks ~56%
+    relevance < 42 ? 70 :   // Moderat: maks ~70%
+    99;                      // Stærkt match: ingen cap
+
+  const total = Math.min(Math.max(rawTotal, 10), relevanceCap);
 
   // ── Forklaringer til brugeren ──────────────────────────────────────────────
   const reasons = [];
-  if (matched.length > 0)
-    reasons.push(`${matched.length} kompetencer matcher: ${matched.slice(0,3).join(', ')}`);
+
+  // Skills-forklaring
+  if (matched.length >= 4)
+    reasons.push(`${matched.length} kompetencer matcher: ${matched.slice(0,3).join(', ')} m.fl.`);
+  else if (matched.length > 0)
+    reasons.push(`${matched.length} kompetencer matcher: ${matched.join(', ')}`);
   else if (transfer.reasons.length)
     reasons.push(transfer.reasons[0]);
+  else if (jobReqs?.length > 0)
+    reasons.push('Ingen direkte kompetence-overlap med jobbets krav');
   else
-    reasons.push('Ingen direkte kompetence-overlap');
+    reasons.push('Ingen kompetencedata at matche mod');
 
-  if (titleScore >= 85)        reasons.push('Jobtitel matcher din faglige profil direkte');
-  else if (titleScore >= 65)   reasons.push('Jobtitel er tæt på din faglige retning');
-  if (locationScore >= 90)     reasons.push('Jobbet er i din by');
-  else if (locationScore <= 35) reasons.push('Jobbet er i en anden by');
-  if (languageScore <= 35)     reasons.push('Kræver sprogkundskaber du ikke har på CV');
-  if (educationScore <= 45)    reasons.push('Uddannelseskrav er højere end dit niveau');
-  if (aiBonus >= 8)            reasons.push('AI: rollen matcher din profil godt');
-  if (transfer.bonus >= 10)    reasons.push('Stærke transferable skills til dette felt');
-  if (senScore >= 95)          reasons.push('Erfaringskrav matcher præcist dit niveau');
-  else if (senScore < 35)      reasons.push('Kræver væsentligt mere erfaring end i CV');
+  // Titel/rolle
+  if (titleScore >= 88)       reasons.push('Jobtitel matcher din faglige profil præcist');
+  else if (titleScore >= 72)  reasons.push('Jobtitel er tæt på din faglige retning');
+  else if (titleScore <= 35)  reasons.push('Jobtitlen ligger langt fra din uddannelsesretning');
 
-  // ── Skill-gaps: jobkrav CV'et IKKE dækker ─────────────────────────────────
+  // Lokation
+  if (locationScore >= 92)    reasons.push('Jobbet er i din by');
+  else if (locationScore >= 72) reasons.push('Jobbet er i din region');
+  else if (locationScore <= 35) reasons.push('Jobbet er i en anden landsdel');
+
+  // Seniority
+  if (senScore >= 95)         reasons.push('Erfaringskrav passer præcist til dit niveau');
+  else if (senScore < 35)     reasons.push('Kræver væsentligt mere erfaring end dit CV viser');
+  else if (gradBonus > 0)     reasons.push('Entry-level stilling — god start for nyuddannet');
+
+  // Sprog, uddannelse, bonus
+  if (languageScore <= 35)    reasons.push('Kræver sprogkompetencer der ikke fremgår af CV');
+  if (educationScore <= 45)   reasons.push('Uddannelseskrav er højere end dit niveau');
+  if (aiBonus >= 10)          reasons.push('AI: din profil matcher denne rolleprofil godt');
+  if (transfer.bonus >= 12)   reasons.push('Stærke transferable skills fra dit fagområde');
+
+  // ── Skill-gaps ──────────────────────────────────────────────────────────────
   const cvNormSet = new Set(profile.skills.map(s => norm(s.name)));
-  const gaps = [...jobSkillSet].filter(s => !cvNormSet.has(s)).slice(0, 4);
+  const gaps = [...jobSkillSet].filter(s => !cvNormSet.has(s) && s.length > 2).slice(0, 4);
 
   return {
     total, coverageScore, titleScore, senScore, kwScore, domainScore,
     locationScore, languageScore, educationScore, contractScore,
-    transferBonus: transfer.bonus, aiBonus, matched, gaps, reasons,
+    transferBonus: transfer.bonus, aiBonus, gradBonus, matched, gaps, reasons,
+    descQuality, relevance,
   };
 }
 
