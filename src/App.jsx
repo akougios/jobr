@@ -1644,11 +1644,49 @@ const Score = ({v,lg}) => {
   );
 };
 
+/* ══ Hjælper: genbyg skillsByCategory + counts fra skills-array ══════════════ */
+function rebuildProfile(base, newSkills) {
+  const skillsByCategory = {};
+  newSkills.forEach(s => {
+    if (!skillsByCategory[s.cat]) skillsByCategory[s.cat] = [];
+    skillsByCategory[s.cat].push(s);
+  });
+  return {
+    ...base,
+    skills: newSkills,
+    skillsByCategory,
+    keywords: newSkills.slice(0,25).map(s=>s.name),
+    totalSkills: newSkills.length,
+    explicitCount: newSkills.filter(s=>!s.inferred).length,
+    inferredCount: newSkills.filter(s=>s.inferred).length,
+  };
+}
+
 /* ═══════════════════════ PROFILE SCREEN ════════════════════════════════════ */
-const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
+const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile }) => {
+  const [editMode, setEditMode] = useState(false);
+  const [addInput, setAddInput]  = useState('');
+  const [addCat, setAddCat]      = useState('Forretning');
+
   const topCats = Object.entries(profile.skillsByCategory)
     .sort((a,b)=>b[1].length - a[1].length)
     .slice(0,6);
+
+  const removeSkill = (skillName) => {
+    const newSkills = profile.skills.filter(s => s.name !== skillName);
+    onUpdateProfile(rebuildProfile(profile, newSkills));
+  };
+
+  const addSkill = () => {
+    const name = addInput.trim();
+    if (!name || profile.skills.find(s => s.name.toLowerCase() === name.toLowerCase())) {
+      setAddInput(''); return;
+    }
+    const newSkill = { name, cat: addCat, confidence: 90, inferred: false, hits: 1 };
+    const newSkills = [newSkill, ...profile.skills];
+    onUpdateProfile(rebuildProfile(profile, newSkills));
+    setAddInput('');
+  };
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)'}}>
@@ -1658,6 +1696,11 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
         <div style={{display:'flex',gap:8}}>
           <button onClick={onReupload} style={{fontSize:13,color:'var(--muted)',padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5}}>
             <Ic n="upload" s={13}/>Skift CV
+          </button>
+          <button onClick={()=>setEditMode(e=>!e)} style={{fontSize:13,padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5,
+            background: editMode ? 'var(--navy)' : 'transparent',
+            color: editMode ? '#fff' : 'var(--muted)'}}>
+            <Ic n="edit" s={13}/>{editMode ? 'Færdig' : 'Rediger'}
           </button>
           <button onClick={onContinue} style={{fontSize:12,fontWeight:700,padding:'7px 18px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',display:'flex',alignItems:'center',gap:5,letterSpacing:'.02em'}}>
             Se job-matches<Ic n="arrow" s={13}/>
@@ -1715,14 +1758,15 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
                     <span style={{fontSize:12,color:'var(--muted)'}}>{skills.length} kompetencer</span>
                   </div>
                   <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                    {skills.slice(0,10).map(s=>(
-                      <div key={s.name} style={{position:'relative'}}>
+                    {(editMode ? skills : skills.slice(0,10)).map(s=>(
+                      <div key={s.name} style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
                         <span title={s.inferred ? `Udledt fra kontekst (${s.confidence}% sikkerhed)` : `Direkte match (${s.confidence}% sikkerhed)`} style={{
-                          display:'inline-flex',alignItems:'center',gap:4,fontSize:12,padding:'3px 9px',
+                          display:'inline-flex',alignItems:'center',gap:4,fontSize:12,
+                          padding: editMode ? '3px 6px 3px 9px' : '3px 9px',
                           background: s.inferred
                             ? (s.confidence>=75 ? '#f0f4f8' : 'var(--surface-high)')
                             : (s.confidence>=80 ? 'var(--accent-bg)' : s.confidence>=50 ? 'var(--surface-low)' : 'var(--surface-high)'),
-                          border: s.inferred ? '1px dashed rgba(0,33,71,0.25)' : 'none',
+                          border: s.inferred ? '1px dashed rgba(0,33,71,0.25)' : (editMode ? '1px solid var(--border2)' : 'none'),
                           color: s.inferred
                             ? (s.confidence>=75 ? '#3a5a80' : 'var(--muted)')
                             : (s.confidence>=80 ? 'var(--navy)' : 'var(--muted)'),
@@ -1730,15 +1774,49 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
                         }}>
                           {s.inferred && <span style={{fontSize:9,opacity:.7}}>✦</span>}
                           {s.name}
+                          {editMode && (
+                            <button onClick={()=>removeSkill(s.name)} style={{
+                              marginLeft:4,padding:'0 2px',border:'none',background:'none',
+                              cursor:'pointer',color:'var(--faint)',display:'inline-flex',
+                              alignItems:'center',lineHeight:1,
+                            }} title="Fjern kompetence">
+                              <Ic n="x" s={11}/>
+                            </button>
+                          )}
                         </span>
                       </div>
                     ))}
-                    {skills.length > 10 && <span style={{fontSize:12,color:'var(--faint)',alignSelf:'center'}}>+{skills.length-10}</span>}
+                    {!editMode && skills.length > 10 && <span style={{fontSize:12,color:'var(--faint)',alignSelf:'center'}}>+{skills.length-10}</span>}
                   </div>
                 </div>
               ))}
+              {/* Tilføj kompetence — kun i edit-mode */}
+              {editMode && (
+                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:'var(--muted)',textTransform:'uppercase',marginBottom:8}}>TILFØJ KOMPETENCE</div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    <input
+                      value={addInput}
+                      onChange={e=>setAddInput(e.target.value)}
+                      onKeyDown={e=>e.key==='Enter'&&addSkill()}
+                      placeholder="fx strategi, python, projektledelse..."
+                      style={{flex:'1 1 180px',padding:'7px 10px',border:'1px solid var(--border2)',fontSize:13,outline:'none',background:'var(--bg)',minWidth:0}}
+                    />
+                    <select value={addCat} onChange={e=>setAddCat(e.target.value)}
+                      style={{padding:'7px 8px',border:'1px solid var(--border2)',fontSize:12,background:'var(--bg)',outline:'none',color:'var(--text)',flexShrink:0}}>
+                      {Object.keys(SKILL_GROUPS).map(c=><option key={c}>{c}</option>)}
+                      <option>Forretning</option>
+                      <option>Bløde</option>
+                    </select>
+                    <button onClick={addSkill} style={{padding:'7px 14px',background:'var(--navy)',color:'#fff',border:'none',fontSize:13,fontWeight:600,cursor:'pointer',flexShrink:0}}>
+                      + Tilføj
+                    </button>
+                  </div>
+                  <div style={{fontSize:11,color:'var(--faint)',marginTop:6}}>Tryk Enter eller klik Tilføj · Nye kompetencer påvirker job-matching med det samme</div>
+                </div>
+              )}
               {/* Legend */}
-              {profile.inferredCount > 0 && (
+              {!editMode && profile.inferredCount > 0 && (
                 <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--border)',display:'flex',gap:16,flexWrap:'wrap'}}>
                   <span style={{fontSize:11,color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
                     <span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 6px',border:'none',background:'var(--accent-bg)',color:'var(--navy)',fontSize:11}}>●</span>
@@ -3219,7 +3297,7 @@ const App = () => {
   if (screen==='landing') return <Landing onUpload={handleFileFromLanding} onSkip={()=>setScreen('jobs')}/>;
   if (screen==='upload')  return <UploadScreen initialFile={pendingFile} onProfile={handleProfile}/>;
   if (screen==='prefs')   return <PreferencesScreen profile={profile} onDone={handlePrefs} onReupload={handleReupload}/>;
-  if (screen==='profile') return <ProfileScreen profile={profile} jobs={jobsData} onContinue={()=>setScreen('jobs')} onReupload={handleReupload}/>;
+  if (screen==='profile') return <ProfileScreen profile={profile} jobs={jobsData} onContinue={()=>setScreen('jobs')} onReupload={handleReupload} onUpdateProfile={setProfile}/>;
   return <JobsScreen profile={profile} prefs={prefs} jobs={jobsData} jobsLoaded={jobsLoaded} jobsLoading={jobsLoading} jobsTotal={jobsTotal} onRefresh={refreshJobs} onReupload={handleReupload} onLogout={handleLogout} user={user}/>;
 };
 
