@@ -306,6 +306,7 @@ CV_PROMPT = """Analyser dette CV grundigt og returnér præcis dette JSON-format
   "years": 4,
   "education": "Kandidat",
   "languages": ["Dansk", "Engelsk"],
+  "location": "København",
   "strengths": ["4 års erfaring med dataanalyse", "Selvstændig projektleder på 3+ projekter"],
   "domains": ["Tekstildesign", "Bæredygtigt mode", "Materialeteknologi"],
   "adjacent_roles": ["Produktdesigner", "Bæredygtighedskonsulent", "Brand Manager"],
@@ -328,6 +329,7 @@ REGLER FOR SKILLS:
 REGLER FOR ØVRIGE FELTER:
 - seniority: "Junior" (0-2 år), "Mid-level" (2-5 år), "Senior" (5-10 år), "Lead / Manager" (10+ år eller lederansvar)
 - education: "PhD", "Kandidat", "Bachelor", "Gymnasial/EUD", "Bootcamp/Selvlært", eller null
+- location: bynavnet personen er baseret i (fra CV-adresse eller nævnte by) — brug dansk stavemåde, fx "København", "Aarhus", "Odense". Null hvis ikke nævnt.
 - domains: 2-5 specifikke fagdomæner personen har dyb ekspertise i
 - adjacent_roles: 4-8 jobtitler personen REALISTISK kan søge baseret på transferable skills
 - summary: 1 præcis sætning der beskriver personen professionelt

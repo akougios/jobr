@@ -415,11 +415,12 @@ async function analyzeCV(rawText, fileName, onProgress) {
     strengths  = aiResult.strengths?.length ? aiResult.strengths
                : buildStrengths(skills, seniority, education);
 
-    // Brug AI's seniority/years/education/languages hvis bedre
+    // Brug AI's seniority/years/education/languages/location hvis bedre
     const finalYears     = aiResult.years     ?? years;
     const finalSeniority = aiResult.seniority ?? seniority;
     const finalEducation = aiResult.education ?? education;
     const finalLanguages = aiResult.languages?.length ? aiResult.languages : languages;
+    const finalLocation  = aiResult.location  || null;
 
     const skillsByCategory = {};
     skills.forEach(s => {
@@ -443,6 +444,7 @@ async function analyzeCV(rawText, fileName, onProgress) {
       wildcard_roles: aiResult.wildcard_roles || [],
       working_style: aiResult.working_style || '',
       discovery_reasoning: aiResult.discovery_reasoning || '',
+      location: finalLocation,
       totalSkills: skills.length, explicitCount, inferredCount,
       aiAnalyzed, aiModel: aiResult.model,
     };
@@ -758,24 +760,33 @@ function scoreJob(profile, job, prefs) {
   const kwScore     = computeKeywordDensity(profile, jobText);
   const domainScore = computeDomainMatch(profile, jobText);
 
-  // ── Bonuser ────────────────────────────────────────────────────────────────
-  const transfer    = getTransferBonus({ ...profile, job }, jobText);
-  const aiBonus     = computeAIContextBonus(profile, jobText, jobTitle);
-  let   prefBonus   = 0;
-  if (prefs) {
-    if (prefs.workMode && prefs.workMode !== 'Ligegyldigt' && job.workMode === prefs.workMode) prefBonus += 5;
-    if (prefs.industries?.length && prefs.industries.includes(job.industry)) prefBonus += 5;
-  }
+  // ── Nye dimensioner ────────────────────────────────────────────────────────
+  const locationScore  = computeLocationFit(job, prefs);
+  const languageScore  = computeLanguageFit(profile, job);
+  const educationScore = computeEducationFit(profile, jobText);
+  const contractScore  = computeContractFit(job, prefs);
 
-  // ── Samlet score ───────────────────────────────────────────────────────────
-  const base  = Math.round(
-    coverageScore * 0.35 +
-    titleScore    * 0.25 +
-    senScore      * 0.20 +
-    kwScore       * 0.15 +
-    domainScore   * 0.05
+  // ── Bonuser ────────────────────────────────────────────────────────────────
+  const transfer = getTransferBonus(profile, jobText);
+  const aiBonus  = computeAIContextBonus(profile, jobText, jobTitle);
+
+  // Industri-præference bonus (+5)
+  const indBonus = prefs?.industries?.length && prefs.industries.includes(job.industry) ? 5 : 0;
+
+  // ── Samlet score: 9 dimensioner ────────────────────────────────────────────
+  // Fordeling tager udgangspunkt i hvad jobsøgere faktisk prioriterer:
+  const base = Math.round(
+    coverageScore  * 0.26 +  // Skills: hvad jobbet kræver, har du?
+    titleScore     * 0.18 +  // Rolle-alignment: er det din type job?
+    locationScore  * 0.15 +  // Lokation: kan du komme derhen?
+    senScore       * 0.14 +  // Seniority: passer erfaringsniveauet?
+    kwScore        * 0.10 +  // Kontekstnøgleord: faglig baggrund
+    languageScore  * 0.08 +  // Sprog: kræver jobbet dansk/engelsk?
+    educationScore * 0.05 +  // Uddannelse: opfylder du formelle krav?
+    contractScore  * 0.02 +  // Kontrakttype: fuldtid/studiejob/deltid
+    domainScore    * 0.02     // Domæne: branche-erfaring
   );
-  const total = Math.min(Math.max(base + transfer.bonus + aiBonus + prefBonus, 10), 99);
+  const total = Math.min(Math.max(base + transfer.bonus + aiBonus + indBonus, 10), 99);
 
   // ── Forklaringer til brugeren ──────────────────────────────────────────────
   const reasons = [];
@@ -786,12 +797,16 @@ function scoreJob(profile, job, prefs) {
   else
     reasons.push('Ingen direkte kompetence-overlap');
 
-  if (titleScore >= 85)       reasons.push('Jobtitel matcher din faglige profil direkte');
-  else if (titleScore >= 65)  reasons.push('Jobtitel er tæt på din faglige retning');
-  if (aiBonus >= 8)           reasons.push('AI-analyse: rollen passer til din profil');
-  if (transfer.bonus >= 10)   reasons.push('Stærke transferable skills til dette felt');
-  if (senScore >= 95)         reasons.push('Erfaringskrav matcher præcist dit niveau');
-  else if (senScore < 35)     reasons.push('Kræver væsentligt mere erfaring end i CV');
+  if (titleScore >= 85)        reasons.push('Jobtitel matcher din faglige profil direkte');
+  else if (titleScore >= 65)   reasons.push('Jobtitel er tæt på din faglige retning');
+  if (locationScore >= 90)     reasons.push('Jobbet er i din by');
+  else if (locationScore <= 35) reasons.push('Jobbet er i en anden by');
+  if (languageScore <= 35)     reasons.push('Kræver sprogkundskaber du ikke har på CV');
+  if (educationScore <= 45)    reasons.push('Uddannelseskrav er højere end dit niveau');
+  if (aiBonus >= 8)            reasons.push('AI: rollen matcher din profil godt');
+  if (transfer.bonus >= 10)    reasons.push('Stærke transferable skills til dette felt');
+  if (senScore >= 95)          reasons.push('Erfaringskrav matcher præcist dit niveau');
+  else if (senScore < 35)      reasons.push('Kræver væsentligt mere erfaring end i CV');
 
   // ── Skill-gaps: jobkrav CV'et IKKE dækker ─────────────────────────────────
   const cvNormSet = new Set(profile.skills.map(s => norm(s.name)));
@@ -799,8 +814,138 @@ function scoreJob(profile, job, prefs) {
 
   return {
     total, coverageScore, titleScore, senScore, kwScore, domainScore,
+    locationScore, languageScore, educationScore, contractScore,
     transferBonus: transfer.bonus, aiBonus, matched, gaps, reasons,
   };
+}
+
+/* ── Lokations-normalisering + cluster-matching ──────────────────────────────── */
+const CITY_CLUSTERS = {
+  københavn: ['københavn','frederiksberg','gentofte','gladsaxe','lyngby','herlev','hvidovre',
+    'rødovre','ballerup','brøndby','albertslund','glostrup','greve','taastrup','høje-taastrup',
+    'ishøj','hellerup','søborg','vanløse','amager','valby','bispebjerg','nørrebro','østerbro',
+    'vesterbro','copenhagen','copenhague','köpenhamn'],
+  aarhus:    ['aarhus','viby j','brabrand','risskov','højbjerg','åbyhøj','lystrup','egå',
+    'skejby','tranbjerg','beder','malling','arhus'],
+  odense:    ['odense','svendborg','nyborg','kerteminde','middelfart','assens'],
+  aalborg:   ['aalborg','nørresundby','storvorde','nibe','brønderslev'],
+  esbjerg:   ['esbjerg','fanø','ribe'],
+  vejle:     ['vejle','kolding','fredericia','horsens'],
+};
+
+function normalizeCity(loc) {
+  return (loc||'').toLowerCase()
+    .replace(/,?\s*(denmark|dk|danmark|dänemark)\b/gi,'')
+    .replace(/\s+[cnsvø]\b/,'')  // fjern "København C", "Aarhus N"
+    .replace(/\bgreater\s+/,'')
+    .trim();
+}
+
+function getCityCluster(loc) {
+  const l = normalizeCity(loc);
+  if (!l) return null;
+  for (const [cluster, cities] of Object.entries(CITY_CLUSTERS)) {
+    if (cities.some(c => l.includes(c) || c.includes(l.split(' ')[0]))) return cluster;
+  }
+  return l.split(/[,\s]/)[0]; // Brug første ord som fallback cluster
+}
+
+/* ── 6. Location fit ─────────────────────────────────────────────────────────── */
+function computeLocationFit(job, prefs) {
+  // Remote = godt for alle
+  if (job.workMode === 'Remote') return 95;
+
+  const mobility = prefs?.mobility || 'anywhere';
+
+  // Brugeren vil kun have remote
+  if (mobility === 'remote_only') return job.workMode === 'Hybrid' ? 45 : 20;
+
+  // Brugeren har ikke angivet by → neutral
+  if (!prefs?.location) return job.workMode === 'Hybrid' ? 75 : 65;
+
+  const userCluster = getCityCluster(prefs.location);
+  const jobCluster  = getCityCluster(job.location || '');
+
+  // Præcist cluster-match (fx begge i København-området)
+  if (userCluster && jobCluster && userCluster === jobCluster) {
+    return job.workMode === 'Hybrid' ? 100 : 95;
+  }
+
+  // Hele landet → afstand er OK
+  if (mobility === 'anywhere') return job.workMode === 'Hybrid' ? 72 : 58;
+
+  // Samme region (groft: begge på Sjælland, begge på Jylland, begge på Fyn)
+  const SJAELLAND = ['københavn','roskilde','næstved','holbæk','slagelse','ringsted','køge'];
+  const JYLLAND   = ['aarhus','aalborg','esbjerg','vejle','herning','viborg','randers','silkeborg','horsens','kolding','fredericia','holstebro','ikast'];
+  const FYN       = ['odense','svendborg','nyborg'];
+  const inSameRegion = (a,b,reg) => reg.some(r=>a?.includes(r)) && reg.some(r=>b?.includes(r));
+  const sameRegion = inSameRegion(userCluster,jobCluster,SJAELLAND)
+                  || inSameRegion(userCluster,jobCluster,JYLLAND)
+                  || inSameRegion(userCluster,jobCluster,FYN);
+
+  if (mobility === 'region') return sameRegion ? (job.workMode==='Hybrid'?78:65) : 30;
+
+  // same_city og intet match
+  return job.workMode === 'Hybrid' ? 52 : 30;
+}
+
+/* ── 7. Sprog-fit ────────────────────────────────────────────────────────────── */
+function computeLanguageFit(profile, job) {
+  const langs = (profile.languages||[]).map(l => l.toLowerCase());
+  const hasDanish  = langs.some(l => l.includes('dansk'));
+  const hasEnglish = langs.some(l => l.includes('engelsk') || l.includes('english'));
+  const jobDesc    = (job.description||'').toLowerCase();
+  const jobTitle   = (job.title||'').toLowerCase();
+  const allText    = jobTitle + ' ' + jobDesc;
+
+  // Kræver eksplicit dansk flydende?
+  const requiresDanish = /(?:dansk\s+(?:flydende|på\s+højt\s+niveau|i\s+ord\s+og\s+skrift|modersmål)|native\s+danish|dansktalende)/i.test(allText);
+  if (requiresDanish && !hasDanish) return 25; // hård straf
+
+  // Er jobbet skrevet på dansk? (indikator for dansk-krav)
+  const isDanishJob = (jobDesc.match(/\b(?:vi søger|du har|ansøgning|stilling|virksomhed|erfaring|medarbejder)\b/g)||[]).length >= 2;
+  if (isDanishJob && !hasDanish) return 50; // moderat straf
+
+  // Kræver engelsk?
+  const requiresEnglish = /(?:english\s+(?:fluent|proficiency|required)|working\s+language\s+is\s+english|english\s+is\s+a\s+must)/i.test(allText);
+  if (requiresEnglish && !hasEnglish) return 40;
+
+  // Alt OK
+  return 85;
+}
+
+/* ── 8. Uddannelses-fit ──────────────────────────────────────────────────────── */
+function computeEducationFit(profile, jobText) {
+  const LEVELS = { 'PhD':4, 'Kandidat':3, 'Bachelor':2, 'Gymnasial/EUD':1, 'Bootcamp/Selvlært':1 };
+  const profileLevel = LEVELS[profile.education] ?? 0;
+
+  const requiresPhD      = /\b(?:phd|ph\.d\.?|doktorgrad)\b/i.test(jobText);
+  const requiresMaster   = /\b(?:kandidat(?:uddannelse|grad)?|cand\.|master(?:'?s)?|msc|m\.sc)\b/i.test(jobText);
+  const requiresBachelor = /\b(?:bachelor(?:'?s)?|bsc|b\.sc|professionsbachelor)\b/i.test(jobText);
+
+  if (requiresPhD)      return profileLevel >= 4 ? 100 : profileLevel === 3 ? 60 : 30;
+  if (requiresMaster)   return profileLevel >= 3 ? 100 : profileLevel === 2 ? 68 : 42;
+  if (requiresBachelor) return profileLevel >= 2 ? 100 : profileLevel >= 1 ? 78 : 55;
+  return 78; // intet eksplicit krav
+}
+
+/* ── 9. Kontrakttype-fit ─────────────────────────────────────────────────────── */
+function computeContractFit(job, prefs) {
+  if (!prefs?.contractType || prefs.contractType === 'all') return 80; // neutral
+  const jobType = (job.type||'').toLowerCase();
+  const jTitle  = (job.title||'').toLowerCase();
+  const allText = jobType + ' ' + jTitle;
+
+  const isStudie  = /studiejob|student\s*job|studentermedhjælper/i.test(allText);
+  const isPraktik = /praktik|trainee|internship|intern\b/i.test(allText);
+  const isDeltid  = /deltid|part[\s-]?time/i.test(allText);
+  const isFuldtid = !isStudie && !isPraktik && !isDeltid;
+
+  if (prefs.contractType === 'studiejob') return isStudie ? 100 : isPraktik ? 70 : 35;
+  if (prefs.contractType === 'praktik')   return isPraktik ? 100 : isStudie ? 70 : 35;
+  if (prefs.contractType === 'deltid')    return isDeltid ? 100 : isPraktik ? 60 : 40;
+  if (prefs.contractType === 'fuldtid')   return isFuldtid ? 100 : isDeltid ? 50 : 45;
+  return 80;
 }
 
 /* ─── Discovery scoring: matcher job mod wildcard_roles ──────────────────── */
@@ -1139,16 +1284,35 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload }) => {
 /* ═══════════════════════ PREFERENCES SCREEN ════════════════════════════════ */
 const PREF_INDUSTRIES = ["IT/Tech","Data & AI","Design","Marketing","Salg","Finans","HR","Ledelse","Sundhed","Logistik","Handel","Andet"];
 const PREF_WORK_MODES = [
-  {val:"Remote",   icon:"🏠", label:"Remote"},
-  {val:"Hybrid",   icon:"🔄", label:"Hybrid"},
-  {val:"Kontor",   icon:"🏢", label:"Kontor"},
+  {val:"Remote",      icon:"🏠", label:"Remote"},
+  {val:"Hybrid",      icon:"🔄", label:"Hybrid"},
+  {val:"Kontor",      icon:"🏢", label:"Kontor"},
   {val:"Ligegyldigt", icon:"🤷", label:"Ligegyldigt"},
 ];
 const PREF_SALARIES = ["Under 35k","35–50k","50–65k","65–80k","80k+"];
 const PREF_STATUS = [
-  {val:"aktiv",  label:"Aktivt søgende", sub:"Klar til at starte hurtigt"},
+  {val:"aktiv",  label:"Aktivt søgende",      sub:"Klar til at starte hurtigt"},
   {val:"aaben",  label:"Åben for muligheder", sub:"Venter på det rigtige job"},
-  {val:"kigger", label:"Bare kigger", sub:"Ingen hast"},
+  {val:"kigger", label:"Bare kigger",         sub:"Ingen hast"},
+];
+const DANISH_CITIES = [
+  'København','Aarhus','Odense','Aalborg','Frederiksberg','Esbjerg','Randers','Kolding',
+  'Horsens','Vejle','Roskilde','Herning','Silkeborg','Næstved','Fredericia','Viborg',
+  'Køge','Holstebro','Helsingør','Hillerød','Slagelse','Holbæk','Svendborg',
+  'Sønderborg','Ikast','Skive','Aabenraa','Ringsted','Nykøbing F','Haslev',
+];
+const PREF_MOBILITY = [
+  {val:'same_city',    label:'Kun min by',    sub:'Maks ~30 min transport'},
+  {val:'region',       label:'Min region',     sub:'Op til ~1 times transport'},
+  {val:'anywhere',     label:'Hele landet',    sub:'Åben for at flytte'},
+  {val:'remote_only',  label:'Kun remote',     sub:'Hjemmearbejde er et krav'},
+];
+const PREF_CONTRACT = [
+  {val:'all',        label:'Alle typer'},
+  {val:'fuldtid',    label:'Fuldtid'},
+  {val:'deltid',     label:'Deltid'},
+  {val:'studiejob',  label:'Studiejob'},
+  {val:'praktik',    label:'Praktik / Trainee'},
 ];
 
 const PrefChip = ({selected, onClick, children}) => (
@@ -1162,23 +1326,60 @@ const PrefChip = ({selected, onClick, children}) => (
   }}>{children}</button>
 );
 
+const PrefRadio = ({selected, onClick, label, sub}) => (
+  <button onClick={onClick} style={{
+    display:'flex',alignItems:'center',gap:12,padding:'11px 14px',width:'100%',
+    border:`1.5px solid ${selected?'var(--navy)':'var(--border2)'}`,
+    background:selected?'var(--accent-bg)':'transparent',
+    textAlign:'left',cursor:'pointer',transition:'all .15s',
+  }}>
+    <div style={{width:16,height:16,borderRadius:'50%',border:`1.5px solid ${selected?'var(--navy)':'var(--border2)'}`,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:selected?'var(--navy)':'transparent'}}>
+      {selected&&<div style={{width:5,height:5,borderRadius:'50%',background:'#fff'}}/>}
+    </div>
+    <div>
+      <div style={{fontSize:13,fontWeight:selected?600:400,color:selected?'var(--navy)':'var(--text)'}}>{label}</div>
+      {sub&&<div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{sub}</div>}
+    </div>
+  </button>
+);
+
 const PreferencesScreen = ({profile, onDone, onReupload}) => {
-  const [workMode, setWorkMode] = useState('Ligegyldigt');
+  const [workMode,   setWorkMode]   = useState('Ligegyldigt');
   const [industries, setIndustries] = useState(
-    profile.roleFamily && PREF_INDUSTRIES.includes(profile.roleFamily)
-      ? [profile.roleFamily] : []
+    profile.roleFamily && PREF_INDUSTRIES.includes(profile.roleFamily) ? [profile.roleFamily] : []
   );
-  const [salary, setSalary] = useState(null);
-  const [status, setStatus] = useState('aaben');
+  const [salary,      setSalary]      = useState(null);
+  const [status,      setStatus]      = useState('aaben');
+  // Nye felter
+  const [city,        setCity]        = useState(profile.location || '');
+  const [cityInput,   setCityInput]   = useState(profile.location || '');
+  const [showCities,  setShowCities]  = useState(false);
+  const [mobility,    setMobility]    = useState('same_city');
+  const [contractType,setContractType]= useState('all');
 
   const toggleIndustry = ind =>
     setIndustries(prev => prev.includes(ind) ? prev.filter(x=>x!==ind) : [...prev, ind]);
 
-  const handleDone = () => onDone({workMode, industries, salary, status});
+  const cityMatches = DANISH_CITIES.filter(c =>
+    cityInput.length > 0 && c.toLowerCase().includes(cityInput.toLowerCase()) && c !== cityInput
+  ).slice(0, 5);
+
+  const handleDone = () => onDone({
+    workMode, industries, salary, status,
+    location: city || cityInput,
+    mobility,
+    contractType,
+  });
+
+  const SectionLabel = ({n, children}) => (
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+      <div style={{width:20,height:20,background:'var(--navy)',color:'#fff',fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{n}</div>
+      <span style={{fontSize:13,fontWeight:600}}>{children}</span>
+    </div>
+  );
 
   return (
     <div style={{minHeight:'100vh', background:'var(--bg)'}}>
-      {/* Nav */}
       <div style={{background:'rgba(251,249,244,0.92)',borderBottom:'1px solid var(--border)',backdropFilter:'blur(8px)',padding:'0 24px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <Logo/>
         <button onClick={onReupload} style={{fontSize:13,color:'var(--muted)',padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5}}>
@@ -1186,21 +1387,49 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
         </button>
       </div>
 
-      <div style={{maxWidth:600, margin:'0 auto', padding:'40px 24px'}}>
-        {/* Header */}
-        <div style={{marginBottom:36, textAlign:'center'}}>
-          <div style={{width:48,height:48,background:'var(--green-bg)',border:'1px solid var(--green-bd)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:22}}>✓</div>
-          <h1 style={{fontSize:28,fontWeight:400,letterSpacing:'-.02em',marginBottom:8,fontFamily:'Newsreader,Georgia,serif'}}>Profil klar!</h1>
-          <p style={{color:'var(--muted)',fontSize:15,lineHeight:1.6}}>
-            Svar på 4 hurtige spørgsmål så vi kan fine-tune dine matches.
-          </p>
+      <div style={{maxWidth:600, margin:'0 auto', padding:'36px 24px'}}>
+        <div style={{marginBottom:32, textAlign:'center'}}>
+          <div style={{width:44,height:44,background:'var(--green-bg)',border:'1px solid var(--green-bd)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:20}}>✓</div>
+          <h1 style={{fontSize:26,fontWeight:400,letterSpacing:'-.02em',marginBottom:6,fontFamily:'Newsreader,Georgia,serif'}}>Profil klar!</h1>
+          <p style={{color:'var(--muted)',fontSize:14,lineHeight:1.6}}>Besvar disse spørgsmål — vi bruger dem til at beregne præcise match-scores.</p>
         </div>
 
-        <div style={{display:'flex',flexDirection:'column',gap:28}}>
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
 
-          {/* Q1: Arbejdsform */}
-          <div style={{background:'var(--surface-low)',padding:'20px 22px'}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Hvilken arbejdsform foretrækker du?</div>
+          {/* Q1: Lokation */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px',position:'relative'}}>
+            <SectionLabel n="1">Hvor er du baseret?</SectionLabel>
+            <div style={{position:'relative',marginBottom:12}}>
+              <input value={cityInput} onChange={e=>{setCityInput(e.target.value);setCity('');setShowCities(true)}}
+                onBlur={()=>setTimeout(()=>setShowCities(false),150)}
+                onFocus={()=>setShowCities(true)}
+                placeholder="Skriv din by, fx København..."
+                style={{width:'100%',padding:'9px 12px',border:'1px solid var(--border2)',fontSize:13,background:'var(--bg)',boxSizing:'border-box',outline:'none'}}
+              />
+              {showCities && cityMatches.length > 0 && (
+                <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--bg)',border:'1px solid var(--border2)',borderTop:'none',zIndex:10}}>
+                  {cityMatches.map(c=>(
+                    <div key={c} onMouseDown={()=>{setCity(c);setCityInput(c);setShowCities(false)}}
+                      style={{padding:'8px 12px',fontSize:13,cursor:'pointer',borderBottom:'1px solid var(--border)'}}
+                      onMouseEnter={e=>e.target.style.background='var(--surface-low)'}
+                      onMouseLeave={e=>e.target.style.background='transparent'}>
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{fontSize:12,color:'var(--muted)',fontWeight:500,marginBottom:10}}>Mobilitet</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {PREF_MOBILITY.map(({val,label,sub})=>(
+                <PrefRadio key={val} selected={mobility===val} onClick={()=>setMobility(val)} label={label} sub={sub}/>
+              ))}
+            </div>
+          </div>
+
+          {/* Q2: Arbejdsform */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
+            <SectionLabel n="2">Hvilken arbejdsform foretrækker du?</SectionLabel>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_WORK_MODES.map(({val,icon,label})=>(
                 <PrefChip key={val} selected={workMode===val} onClick={()=>setWorkMode(val)}>
@@ -1210,10 +1439,22 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q2: Brancher */}
-          <div style={{background:'var(--surface-low)',padding:'20px 22px'}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Hvilke brancher er du interesseret i?</div>
-            <div style={{fontSize:12,color:'var(--muted)',marginBottom:14}}>Vælg én eller flere</div>
+          {/* Q3: Kontrakttype */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
+            <SectionLabel n="3">Hvilken type stilling søger du?</SectionLabel>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {PREF_CONTRACT.map(({val,label})=>(
+                <PrefChip key={val} selected={contractType===val} onClick={()=>setContractType(val)}>
+                  {label}
+                </PrefChip>
+              ))}
+            </div>
+          </div>
+
+          {/* Q4: Brancher */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
+            <SectionLabel n="4">Hvilke brancher interesserer dig?</SectionLabel>
+            <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Vælg gerne flere</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_INDUSTRIES.map(ind=>(
                 <PrefChip key={ind} selected={industries.includes(ind)} onClick={()=>toggleIndustry(ind)}>
@@ -1223,10 +1464,9 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q3: Løn */}
-          <div style={{background:'var(--surface-low)',padding:'20px 22px'}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Hvad er dit lønniveau? <span style={{fontWeight:400,color:'var(--faint)'}}>(månedlig brutto)</span></div>
-            <div style={{fontSize:12,color:'var(--muted)',marginBottom:14}}>Valgfrit — bruges til at filtrere opslag med løn angivet</div>
+          {/* Q5: Løn */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
+            <SectionLabel n="5">Hvad er dit lønniveau? <span style={{fontWeight:400,color:'var(--faint)',fontSize:11}}>(månedlig brutto, valgfrit)</span></SectionLabel>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_SALARIES.map(s=>(
                 <PrefChip key={s} selected={salary===s} onClick={()=>setSalary(prev=>prev===s?null:s)}>
@@ -1236,30 +1476,16 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          {/* Q4: Status */}
-          <div style={{background:'var(--surface-low)',padding:'20px 22px'}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Hvor aktivt søger du?</div>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {/* Q6: Status */}
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
+            <SectionLabel n="6">Hvor aktivt søger du?</SectionLabel>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {PREF_STATUS.map(({val,label,sub})=>(
-                <button key={val} onClick={()=>setStatus(val)} style={{
-                  display:'flex',alignItems:'center',gap:12,padding:'12px 14px',
-                  border:`1.5px solid ${status===val?'var(--navy)':'var(--border2)'}`,
-                  background:status===val?'var(--surface-low)':'transparent',
-                  textAlign:'left',cursor:'pointer',transition:'all .15s',
-                }}>
-                  <div style={{width:18,height:18,border:`1.5px solid ${status===val?'var(--navy)':'var(--border2)'}`,background:status===val?'var(--navy)':'transparent',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                    {status===val&&<div style={{width:6,height:6,background:'#fff'}}/>}
-                  </div>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:status===val?600:400,color:status===val?'var(--navy)':'var(--text)'}}>{label}</div>
-                    <div style={{fontSize:12,color:'var(--muted)',marginTop:1}}>{sub}</div>
-                  </div>
-                </button>
+                <PrefRadio key={val} selected={status===val} onClick={()=>setStatus(val)} label={label} sub={sub}/>
               ))}
             </div>
           </div>
 
-          {/* CTA */}
           <button onClick={handleDone} style={{padding:'14px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',fontWeight:700,fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',gap:8,letterSpacing:'.02em'}}>
             Se mine job-matches <Ic n="arrow" s={15}/>
           </button>
@@ -1401,11 +1627,13 @@ Med venlig hilsen
             <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:12}}>MATCH-ANALYSE</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               {[
-                {l:'Skill coverage',v:match.coverageScore ?? match.skillScore},
-                {l:'Rolle-alignment',v:match.titleScore ?? match.roleScore},
+                {l:'Skills',         v:match.coverageScore  ?? match.skillScore},
+                {l:'Rolle',          v:match.titleScore     ?? match.roleScore},
+                {l:'Lokation',       v:match.locationScore},
                 {l:'Erfaringsniveau',v:match.senScore},
-                {l:'Kontekstnøgleord',v:match.kwScore},
-              ].map(({l,v})=>(
+                {l:'Sprog',          v:match.languageScore},
+                {l:'Uddannelse',     v:match.educationScore},
+              ].filter(({v})=>v!=null).map(({l,v})=>(
                 <div key={l}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
                     <span style={{color:'var(--muted)'}}>{l}</span>

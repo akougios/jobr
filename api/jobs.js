@@ -112,24 +112,48 @@ module.exports = async function handler(req, res) {
       const yrsMatch = txt.match(/(\d+)\+?\s*years?\s*(?:of\s*)?experience|(\d+)\+?\s*års?\s*erfaring/i);
       const reqYears = yrsMatch ? parseInt(yrsMatch[1] || yrsMatch[2]) : null;
 
+      // Udled uddannelseskrav
+      const requiresPhD      = /\b(?:phd|ph\.d\.?|doktorgrad)\b/i.test(txt);
+      const requiresMaster   = /\b(?:kandidat|cand\.|master(?:'?s)?|msc|m\.sc)\b/i.test(txt);
+      const requiresBachelor = /\b(?:bachelor(?:'?s)?|bsc|professionsbachelor)\b/i.test(txt);
+      const educationReq     = requiresPhD ? 'PhD' : requiresMaster ? 'Kandidat' : requiresBachelor ? 'Bachelor' : null;
+
+      // Registrér om job kræver dansk
+      const requiresDanish = /(?:dansk\s+(?:flydende|på\s+højt\s+niveau|i\s+ord\s+og\s+skrift)|native\s+danish|dansktalende)/i.test(txt);
+
+      // Kontrakttype
+      const isStudie  = /studiejob|student\s*job|studentermedhjælper/i.test(txt);
+      const isPraktik = /praktik|trainee|internship|intern\b/i.test(txt);
+      const isDeltid  = /deltid|part[\s-]?time/i.test(txt);
+      const contractType = isStudie ? 'studiejob' : isPraktik ? 'praktik' : isDeltid ? 'deltid' : 'fuldtid';
+
+      // Ren by (fjern "Denmark" etc.)
+      const city = (j.job_city || '')
+        .replace(/,?\s*(denmark|dk|danmark)\b/gi, '')
+        .trim();
+
       return {
-        id:          `js-${j.job_id || i}`,
-        title:       j.job_title || 'Stilling',
-        company:     j.employer_name || 'Ukendt',
-        location:    [j.job_city, j.job_country].filter(Boolean).join(', ') || 'Danmark',
-        type:        j.job_employment_type || 'FULLTIME',
-        workMode:    mode,
-        salary:      j.job_min_salary ? `${Math.round(j.job_min_salary).toLocaleString()}–${Math.round(j.job_max_salary||j.job_min_salary*1.3).toLocaleString()} kr/md` : '',
-        description: desc,
-        keywords:    kws,
-        posted:      postedTxt,
-        deadline:    '',
-        url:         j.job_apply_link || j.job_google_link || '',
-        source:      'jsearch',
-        sourceLabel: 'JSearch',
+        id:           `js-${j.job_id || i}`,
+        title:        j.job_title || 'Stilling',
+        company:      j.employer_name || 'Ukendt',
+        location:     city || 'Danmark',
+        country:      j.job_country || 'DK',
+        type:         j.job_employment_type || 'FULLTIME',
+        workMode:     mode,
+        salary:       j.job_min_salary ? `${Math.round(j.job_min_salary).toLocaleString()}–${Math.round(j.job_max_salary||j.job_min_salary*1.3).toLocaleString()} kr/md` : '',
+        description:  desc,
+        keywords:     kws,
+        posted:       postedTxt,
+        deadline:     '',
+        url:          j.job_apply_link || j.job_google_link || '',
+        source:       'jsearch',
+        sourceLabel:  'JSearch',
         industry,
         seniority,
         reqYears,
+        educationReq,
+        requiresDanish,
+        contractType,
       };
     });
 
