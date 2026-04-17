@@ -133,17 +133,192 @@ const ALL_SKILLS = Object.entries(SKILL_GROUPS).flatMap(([cat,skills]) =>
 /* ═══════════════════════ CV ANALYSIS ENGINE ════════════════════════════════ */
 const norm = t => (t||"").toLowerCase().replace(/[^\w\sæøå]/g," ").replace(/\s+/g," ").trim();
 
+/* ── Normalisér engelske skill-navne til danske standardnavne ─────────────── */
+/* Bruges til at oversætte AI-returnerede engelske navne (fx "Strategy" → "strategi") */
+const SKILL_NORMALIZE = {
+  // Strategi & forretning
+  'strategy':                'strategi',
+  'strategic planning':      'strategi',
+  'strategic management':    'strategi',
+  'corporate strategy':      'strategi',
+  'business strategy':       'strategi',
+  'go-to-market':            'strategi',
+  'go to market':            'strategi',
+  'management':              'ledelse',
+  'leadership':              'ledelse',
+  'people leadership':       'ledelse',
+  'team management':         'teamledelse',
+  'team leadership':         'teamledelse',
+  'people management':       'teamledelse',
+  'line management':         'teamledelse',
+  'project management':      'projektledelse',
+  'programme management':    'projektledelse',
+  'program management':      'projektledelse',
+  'project coordination':    'projektledelse',
+  'business development':    'forretningsudvikling',
+  'commercial development':  'forretningsudvikling',
+  'consulting':              'konsulentvirksomhed',
+  'advisory':                'konsulentvirksomhed',
+  'financial analysis':      'finansiel analyse',
+  'financial modeling':      'finansiel analyse',
+  'financial planning':      'finansiel analyse',
+  'budgeting':               'budgettering',
+  'budget management':       'budgettering',
+  'digital transformation':  'digital transformation',
+  'change management':       'forandringsledelse',
+  'organizational change':   'forandringsledelse',
+  'process optimization':    'procesoptimering',
+  'process improvement':     'procesoptimering',
+  'process efficiency':      'procesoptimering',
+  'risk management':         'risikostyring',
+  'risk mitigation':         'risikostyring',
+  'risk assessment':         'risikostyring',
+  'compliance':              'compliance',
+  'regulatory compliance':   'compliance',
+  'it architecture':         'it-arkitektur',
+  'enterprise architecture': 'it-arkitektur',
+  'solution architecture':   'it-arkitektur',
+  'stakeholder management':  'stakeholder management',
+  'stakeholder engagement':  'stakeholder management',
+  'reporting':               'rapportering',
+  'management reporting':    'rapportering',
+  'governance':              'governance',
+  // Bløde kompetencer
+  'communication':           'kommunikation',
+  'communications':          'kommunikation',
+  'collaboration':           'samarbejde',
+  'teamwork':                'samarbejde',
+  'cross-functional collaboration': 'samarbejde',
+  'analytical':              'analytisk',
+  'analytical skills':       'analytisk',
+  'analysis':                'analytisk',
+  'data-driven':             'analytisk',
+  'quantitative analysis':   'analytisk',
+  'presentation':            'præsentation',
+  'presenting':              'præsentation',
+  'negotiation':             'forhandling',
+  'contract negotiation':    'forhandling',
+  'problem solving':         'problemløsning',
+  'problem-solving':         'problemløsning',
+  'creative':                'kreativ',
+  'creativity':              'kreativ',
+  'innovation':              'kreativ',
+  'independent':             'selvstændig',
+  'proactive':               'selvstændig',
+  // Data
+  'data analysis':           'dataanalyse',
+  'data analytics':          'dataanalyse',
+  'data science':            'data science',
+  'machine learning':        'machine learning',
+  'artificial intelligence': 'machine learning',
+  'large language models':   'llm',
+  'large language model':    'llm',
+  'generative ai':           'llm',
+  'natural language processing': 'nlp',
+  // Økonomi
+  'accounting':              'regnskab',
+  'bookkeeping':             'regnskab',
+  'financial accounting':    'regnskab',
+  'controlling':             'controlling',
+  // HR
+  'recruitment':             'rekruttering',
+  'recruiting':              'rekruttering',
+  'talent acquisition':      'rekruttering',
+  'employee development':    'medarbejderudvikling',
+  'talent development':      'medarbejderudvikling',
+  // Produkt
+  'product management':      'product management',
+  'product strategy':        'product strategy',
+};
+
+function normalizeSkillName(name) {
+  const key = name.toLowerCase().trim();
+  return SKILL_NORMALIZE[key] || name;
+}
+
+/* ── English → Danish skill aliases: CV text in English finds Danish skill names ── */
+const ENGLISH_ALIASES = {
+  // Forretning / strategi
+  'strategi':               ['strategy','strategic','strategist','strategic planning','strategic direction','go-to-market','go to market'],
+  'ledelse':                ['management','leadership','managing','managed','head of','director','vp of','vice president'],
+  'teamledelse':            ['team management','team lead','team leader','team leadership','people management','people leader','line management'],
+  'projektledelse':         ['project management','project manager','programme management','program management','project lead','project coordinator','pmo'],
+  'forretningsudvikling':   ['business development','business growth','biz dev','commercial development','market expansion'],
+  'konsulentvirksomhed':    ['consulting','consultant','advisory','adviser','advisor'],
+  'finansiel analyse':      ['financial analysis','financial modeling','financial planning','financial reporting','financial modeling'],
+  'budgettering':           ['budgeting','budget management','budget planning','budget responsibility','budget ownership'],
+  'digital transformation': ['digital transformation','digitalization','digital strategy','digital initiatives'],
+  'forandringsledelse':     ['change management','organizational change','transformation management','change leadership'],
+  'procesoptimering':       ['process optimization','process improvement','process efficiency','business process','workflow optimization'],
+  'risikostyring':          ['risk management','risk mitigation','risk assessment','risk analysis','risk framework'],
+  'governance':             ['governance','corporate governance'],
+  'compliance':             ['compliance','regulatory affairs','regulatory compliance','aml','kyc'],
+  'it-arkitektur':          ['it architecture','enterprise architecture','solution architecture','systems architecture','technical architecture'],
+  'stakeholder management': ['stakeholder management','stakeholder engagement','managing stakeholders','stakeholders'],
+  'rapportering':           ['reporting','reports','management reporting','executive reporting'],
+
+  // Bløde kompetencer
+  'kommunikation':          ['communication','communications','communicating','present to','communicate with'],
+  'samarbejde':             ['collaboration','teamwork','cooperat','cross-functional','cross functional','working closely','partnering','partnered with'],
+  'analytisk':              ['analytical','analysis','analyze','analysing','analyzing','data-driven','evidence-based','evidence based','quantitative'],
+  'præsentation':           ['presentation','presenting','presented to','pitching','pitch'],
+  'forhandling':            ['negotiation','negotiating','negotiate','contract negotiation','deal'],
+  'problemløsning':         ['problem solving','problem-solving','troubleshooting','issue resolution'],
+  'selvstændig':            ['independent','self-driven','proactive','autonomous','self-managed','initiative'],
+  'kreativ':                ['creative','creativity','innovative','innovation','ideation'],
+
+  // Data / AI
+  'dataanalyse':            ['data analysis','data analytics','analyzing data','data interpretation'],
+  'data modeling':          ['data modeling','data modelling','data model'],
+  'machine learning':       ['machine learning','ml model','ml pipeline'],
+  'llm':                    ['large language model','llm','chatgpt','gpt','generative ai'],
+  'nlp':                    ['natural language processing','nlp','text mining','text analytics'],
+
+  // Økonomi
+  'regnskab':               ['accounting','financial accounting','bookkeeping','accounts','p&l'],
+  'controlling':            ['controlling','financial control','cost control','management accounting'],
+
+  // HR
+  'rekruttering':           ['recruitment','recruiting','talent acquisition','hiring','headhunting'],
+  'onboarding':             ['onboarding','employee onboarding','induction'],
+  'medarbejderudvikling':   ['employee development','people development','talent development','staff development'],
+
+  // Marketing / kommunikation
+  'seo':                    ['search engine optimization','seo strategy','organic search'],
+  'content marketing':      ['content marketing','content strategy','editorial','content creation'],
+  'indholdsstrategi':       ['content strategy','editorial strategy'],
+
+  // IT
+  'sharepoint':             ['sharepoint','share point'],
+  'power bi':               ['power bi','powerbi'],
+  'microsoft 365':          ['microsoft 365','office 365','m365','o365'],
+  'power automate':         ['power automate','power platform','ms flow'],
+
+  // Produkt
+  'product management':     ['product management','product manager','product owner','product lead'],
+  'agile':                  ['agile','agile methodology','agile working'],
+  'scrum':                  ['scrum','scrum master','sprint'],
+  'okr':                    ['okr','objectives and key results','okrs'],
+  'kpi':                    ['kpi','key performance indicator','kpis','metrics','performance metrics'],
+  'roadmap':                ['roadmap','product roadmap','strategic roadmap'],
+};
+
 function extractSkillsFromText(text) {
   const t = norm(text);
   const found = {};
   ALL_SKILLS.forEach(({name,cat}) => {
-    const aliases = name === "c#" ? ["c#","csharp","c sharp"] :
-                    name === "node.js" ? ["node.js","nodejs","node js"] :
-                    name === "next.js" ? ["next.js","nextjs","next js"] :
-                    name === "nest.js" ? ["nest.js","nestjs"] :
-                    name === "vue"     ? ["vue","vuejs","vue.js"] :
-                    name === "react"   ? ["react","reactjs"] :
-                    [name];
+    // Built-in tech aliases
+    const techAliases = name === "c#" ? ["c#","csharp","c sharp"] :
+                        name === "node.js" ? ["node.js","nodejs","node js"] :
+                        name === "next.js" ? ["next.js","nextjs","next js"] :
+                        name === "nest.js" ? ["nest.js","nestjs"] :
+                        name === "vue"     ? ["vue","vuejs","vue.js"] :
+                        name === "react"   ? ["react","reactjs"] :
+                        [name];
+    // English aliases for Danish/mixed skill names
+    const enAliases = ENGLISH_ALIASES[name] || [];
+    const aliases = [...techAliases, ...enAliases];
+
     let hits = 0;
     aliases.forEach(a => {
       const escaped = a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
@@ -237,6 +412,77 @@ const INFERENCE_PATTERNS = [
   // Negotiation / sales signals
   { re: /(?:forhandlede?|indgik\s+aftaler?|lukkede?\s+(?:salg|deals?|kontrakter?)|revenue\s+(?:ansvarlig|mål|vækst))/gi,
     skills: ["forhandling","forretningsudvikling"], cat:"Bløde", conf:75 },
+
+  // ── English CV patterns (CV'er skrevet på engelsk) ────────────────────────
+  // Leadership / management (English)
+  { re: /(?:managed?|led|leading|oversaw|oversee|directed|supervised?|responsible\s+for)\s+(?:a\s+)?(?:team|staff|employees?|engineers?|analysts?|developers?)/gi,
+    skills: ["ledelse","teamledelse"], cat:"Bløde", conf:82 },
+  { re: /(?:team\s+of\s+\d+|led\s+\d+|managed\s+\d+\s+(?:people|employees?|staff|analysts?))/gi,
+    skills: ["ledelse","teamledelse"], cat:"Bløde", conf:85 },
+  { re: /(?:head\s+of|director\s+of|vp\s+of|vice\s+president|c-suite|chief\s+(?:analytics|data|digital|strategy))/gi,
+    skills: ["ledelse","strategi"], cat:"Bløde", conf:80 },
+
+  // Strategy (English)
+  { re: /(?:developed?\s+(?:strategy|strategic\s+plan|roadmap)|defined?\s+(?:strategy|vision|direction)|strategic\s+(?:planning|direction|initiatives?|goals?))/gi,
+    skills: ["strategi","forretningsudvikling"], cat:"Forretning", conf:82 },
+  { re: /(?:go[\s-]to[\s-]market|business\s+strategy|corporate\s+strategy|growth\s+strategy|market\s+strategy)/gi,
+    skills: ["strategi","forretningsudvikling"], cat:"Forretning", conf:78 },
+
+  // Stakeholder / communication (English)
+  { re: /(?:presented?\s+to|reported\s+to|communicated?\s+with|collaborated?\s+with|partnered?\s+with)\s+(?:senior\s+)?(?:leadership|management|executives?|stakeholders?|c-level|board)/gi,
+    skills: ["stakeholder management","kommunikation","præsentation"], cat:"Bløde", conf:82 },
+  { re: /(?:stakeholder\s+(?:management|engagement|alignment|communication)|cross[\s-]functional\s+(?:teams?|collaboration|alignment))/gi,
+    skills: ["stakeholder management","samarbejde"], cat:"Bløde", conf:78 },
+
+  // Project management (English)
+  { re: /(?:managed?\s+(?:multiple\s+)?projects?|project\s+(?:manager|management|lead|coordinator|delivery)|delivered?\s+projects?|programme\s+management)/gi,
+    skills: ["projektledelse","samarbejde"], cat:"Forretning", conf:78 },
+  { re: /(?:on\s+time\s+and\s+on\s+budget|milestones?|deliverables?|project\s+plan|project\s+scope|project\s+governance)/gi,
+    skills: ["projektledelse"], cat:"Forretning", conf:72 },
+
+  // Analytical / data-driven (English)
+  { re: /(?:data[\s-]driven|analytically\s+strong|analytical\s+(?:skills?|mindset|approach)|evidence[\s-]based|quantitative\s+(?:analysis|skills?))/gi,
+    skills: ["analytisk","dataanalyse"], cat:"Data & AI", conf:80 },
+  { re: /(?:built|designed|developed|created)\s+(?:\w+\s+){0,3}(?:dashboard|dashboards|reports?|insights|metrics|kpis)/gi,
+    skills: ["analytisk","kpi","rapportering"], cat:"Data & AI", conf:75 },
+  { re: /(?:improved?\s+(?:by\s+)?\d+\s*%|reduced?\s+(?:by\s+)?\d+\s*%|increased?\s+(?:by\s+)?\d+\s*%|grew\s+(?:by\s+)?\d+\s*%)/gi,
+    skills: ["analytisk"], cat:"Data & AI", conf:72 },
+
+  // Change management / transformation (English)
+  { re: /(?:change\s+management|organizational\s+change|business\s+transformation|digital\s+transformation|transformation\s+(?:program|project|initiative))/gi,
+    skills: ["forandringsledelse","strategi","projektledelse"], cat:"Forretning", conf:80 },
+
+  // Process improvement (English)
+  { re: /(?:process\s+(?:improvement|optimization|redesign|re-engineering|efficiency)|streamlined?|optimized?|automated?\s+processes?|lean\s+processes?)/gi,
+    skills: ["procesoptimering","analytisk"], cat:"Forretning", conf:75 },
+
+  // Business development (English)
+  { re: /(?:business\s+development|new\s+business|revenue\s+growth|market\s+expansion|new\s+markets?|business\s+growth|commercial\s+strategy)/gi,
+    skills: ["forretningsudvikling","strategi"], cat:"Forretning", conf:78 },
+  { re: /(?:consulting|consultant|advisory|advisors?|advising\s+(?:clients?|companies|organisations?))/gi,
+    skills: ["konsulentvirksomhed","forretningsudvikling"], cat:"Forretning", conf:72 },
+
+  // Negotiation (English)
+  { re: /(?:negotiated?|closed?\s+(?:deals?|contracts?|agreements?)|contract\s+negotiation|vendor\s+(?:management|negotiation)|procurement)/gi,
+    skills: ["forhandling","forretningsudvikling"], cat:"Bløde", conf:75 },
+
+  // Risk / compliance (English)
+  { re: /(?:risk\s+(?:management|assessment|mitigation|framework|governance)|compliance\s+(?:framework|management|monitoring)|regulatory\s+(?:compliance|requirements?|affairs))/gi,
+    skills: ["risikostyring","compliance","governance"], cat:"Jura & Compliance", conf:78 },
+
+  // AI / ML / Data science (English)
+  { re: /(?:built|developed?|designed|deployed|implemented)\s+(?:\w+\s+){0,3}(?:ai|ml|llm|machine\s+learning|data\s+science|rag|copilot|genai|generative\s+ai)/gi,
+    skills: ["machine learning","llm","data science"], cat:"Data & AI", conf:85 },
+  { re: /(?:ai\s+(?:strategy|roadmap|solutions?|initiatives?|products?|adoption)|generative\s+ai|agentic\s+ai|ai[\s-]powered)/gi,
+    skills: ["machine learning","llm","strategi"], cat:"Data & AI", conf:80 },
+
+  // Collaboration / teamwork (English)
+  { re: /(?:collaborated?\s+(?:closely\s+)?with|worked?\s+closely\s+with|partnered?\s+with|cross[\s-]functional|across\s+teams?|across\s+departments?)/gi,
+    skills: ["samarbejde","stakeholder management"], cat:"Bløde", conf:72 },
+
+  // Financial analysis (English)
+  { re: /(?:financial\s+(?:analysis|modeling|planning|forecasting|reporting)|p&l\s+(?:responsibility|management)|budget\s+(?:management|responsibility|ownership))/gi,
+    skills: ["finansiel analyse","budgettering","analytisk"], cat:"Forretning", conf:78 },
 ];
 
 // Domain context patterns → infer industry expertise
@@ -487,9 +733,9 @@ async function analyzeCV(rawText, fileName, onProgress) {
     onProgress?.("Anvender AI-resultater...");
     aiAnalyzed = true;
 
-    // Normalisér AI-kompetencer (sikr at alle felter er der)
+    // Normalisér AI-kompetencer (sikr at alle felter er der + oversæt engelske navne)
     const aiSkills = (aiResult.skills || []).map(s => ({
-      name:       s.name || "",
+      name:       normalizeSkillName(s.name || ""),
       cat:        s.cat  || "Forretning",
       confidence: s.confidence ?? 70,
       inferred:   s.inferred ?? false,
@@ -500,8 +746,9 @@ async function analyzeCV(rawText, fileName, onProgress) {
     const merged = {};
     aiSkills.forEach(s => { merged[s.name.toLowerCase()] = s; });
     ruleSkills.forEach(s => {
-      const k = s.name.toLowerCase();
-      if (!merged[k]) merged[k] = s;
+      const sk = { ...s, name: normalizeSkillName(s.name) };
+      const k = sk.name.toLowerCase();
+      if (!merged[k]) merged[k] = sk;
     });
     skills = Object.values(merged).sort((a,b) => {
       if (!a.inferred && b.inferred) return -1;
@@ -550,7 +797,7 @@ async function analyzeCV(rawText, fileName, onProgress) {
 
   // Ren regelbaseret fallback
   onProgress?.("Bygger profil...");
-  skills     = ruleSkills;
+  skills     = ruleSkills.map(s => ({ ...s, name: normalizeSkillName(s.name) }));
   roleFamily = detectRoleFamily(skills, roles[0]?.title || "");
   strengths  = buildStrengths(skills, seniority, education);
 
@@ -701,11 +948,21 @@ function computeSkillCoverage(profile, job) {
   });
 
   // Pass 2: scan CV skills direkte i fuld jobtekst (word-boundary regex)
+  // Byg reverse-map: dansk skill-navn → alle engelske aliasser (fra SKILL_NORMALIZE)
+  const daToEnAliases = {};
+  Object.entries(SKILL_NORMALIZE).forEach(([en, da]) => {
+    if (!daToEnAliases[da]) daToEnAliases[da] = [];
+    daToEnAliases[da].push(en);
+  });
   cvMap.forEach((sk, skillName) => {
     if (skillName.length < 3 || matched.includes(sk.name)) return;
-    const esc = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re  = new RegExp(`(?<![\\w])${esc}(?![\\w])`, 'i');
-    if (re.test(fullText)) {
+    // Check alle varianter: det normaliserede navn + engelske aliasser
+    const variants = [skillName, ...(daToEnAliases[skillName]||[])];
+    const found = variants.some(v => {
+      const esc = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?<![\\w])${esc}(?![\\w])`, 'i').test(fullText);
+    });
+    if (found) {
       matched.push(sk.name);
       weightedCoverage += sk.inferred ? 0.4 : 0.75;
     }
@@ -1855,17 +2112,30 @@ const JobDetail = ({job,match,saved,onSave,applied,onApply,profile}) => {
 
       const required   = (data.required_skills || []).map(s => s.toLowerCase());
       const niceToHave = (data.nice_to_have    || []).map(s => s.toLowerCase());
+      // CV-navne: inkl. normaliserede engelske aliasser for matching
       const cvNames    = new Set(profile.skills.map(s => s.name.toLowerCase()));
+      // Udvid cvNames med engelske aliasser (fx "strategi" → tilføj "strategy" til settet)
+      const cvNamesExpanded = new Set(cvNames);
+      Object.entries(SKILL_NORMALIZE).forEach(([en, da]) => {
+        if (cvNames.has(da)) cvNamesExpanded.add(en);
+        if (cvNames.has(en)) cvNamesExpanded.add(da);
+      });
 
-      // Direkte match
-      const matched = required.filter(s => cvNames.has(s));
+      // Direkte match (bruger udvidet sæt)
+      const matched = required.filter(s => cvNamesExpanded.has(s));
       // Synonym-match: required_skill → synonym → cv skill
       const synonymMatched = [];
       required.forEach(req => {
         if (matched.includes(req)) return;
+        // Prøv normalisering af req mod cvNames
+        const normReq = normalizeSkillName(req);
+        if (cvNames.has(normReq) && !synonymMatched.includes(req)) {
+          synonymMatched.push(req);
+          return;
+        }
         for (const [phrase, mappedSkills] of Object.entries(SKILL_SYNONYMS)) {
           if (req.includes(phrase) || phrase.includes(req)) {
-            const hit = mappedSkills.find(ms => cvNames.has(ms));
+            const hit = mappedSkills.find(ms => cvNamesExpanded.has(ms));
             if (hit && !synonymMatched.includes(req)) { synonymMatched.push(req); break; }
           }
         }
