@@ -942,29 +942,43 @@ function scoreJob(profile, job, prefs) {
   const aiBonus  = computeAIContextBonus(profile, jobText, jobTitle);
   const indBonus = prefs?.industries?.length && prefs.industries.includes(job.industry) ? 5 : 0;
 
-  // ── Samlet score: vægte skills+titel højere (de er kernerelevansen) ────────
+  // ── Samlet score: skills + titel er kernerelevansen ───────────────────────
   const base = Math.round(
-    coverageScore  * 0.28 +  // Skills: hvad jobbet kræver, har du?
-    titleScore     * 0.20 +  // Rolle-alignment: er det din type job?
-    locationScore  * 0.14 +  // Lokation: kan du komme derhen?
+    coverageScore  * 0.30 +  // Skills: hvad jobbet kræver, har du?
+    titleScore     * 0.22 +  // Rolle-alignment: er det din type job?
     senScore       * 0.13 +  // Seniority: passer erfaringsniveauet?
+    locationScore  * 0.12 +  // Lokation (base-andel — se tillig penalty nedenfor)
     kwScore        * 0.10 +  // Kontekstnøgleord: faglig kontekst
     languageScore  * 0.07 +  // Sprog: kræver jobbet dansk/engelsk?
     educationScore * 0.05 +  // Uddannelse: opfylder du formelle krav?
-    contractScore  * 0.02 +  // Kontrakttype: fuldtid/studiejob/deltid
-    domainScore    * 0.01     // Domæne: branche-erfaring
+    contractScore  * 0.01     // Kontrakttype: fuldtid/studiejob/deltid
   );
 
-  const rawTotal = base + transfer.bonus + aiBonus + indBonus + gradBonus;
+  // ── Lokations-straf: separat additivt fradrag (udover vægten) ─────────────
+  // Giver lokation reel bid — langt væk = markant lavere score.
+  const hasUserLocation = !!prefs?.location;
+  const locationPenalty = !hasUserLocation ? 0
+    : locationScore >= 80 ? 0      // Samme by/cluster → ingen straf
+    : locationScore >= 60 ? -4     // Tæt på (naboby, hybrid) → lille straf
+    : locationScore >= 40 ? -12    // Forkert region → mærkbar straf
+    : -22;                         // Anden landsdel → stor straf
 
-  // ── Relevans-gate: hvis skills + titel begge er svage, begrænser vi totalen ─
-  // Forhindrer at "forkerte" jobs scorer 50% pga. god location/sprog alene.
+  // Mobilitetsstraf: hvis brugeren valgte "kun min by" og jobbet er et andet sted
+  const mobilityPenalty =
+    prefs?.mobility === 'same_city' && locationScore < 70 ? -8 :
+    prefs?.mobility === 'region'    && locationScore < 40 ? -6 :
+    0;
+
+  const rawTotal = base + transfer.bonus + aiBonus + indBonus + gradBonus
+                 + locationPenalty + mobilityPenalty;
+
+  // ── Relevans-gate: svage skills+titel begrænser totalen ───────────────────
   const relevance = coverageScore * 0.55 + titleScore * 0.45;
   const relevanceCap =
-    relevance < 15 ? 44 :   // Klart irrelevant: maks ~44%
-    relevance < 28 ? 56 :   // Svagt match: maks ~56%
-    relevance < 42 ? 70 :   // Moderat: maks ~70%
-    99;                      // Stærkt match: ingen cap
+    relevance < 15 ? 44 :
+    relevance < 28 ? 56 :
+    relevance < 42 ? 70 :
+    99;
 
   const total = Math.min(Math.max(rawTotal, 10), relevanceCap);
 
@@ -989,9 +1003,12 @@ function scoreJob(profile, job, prefs) {
   else if (titleScore <= 35)  reasons.push('Jobtitlen ligger langt fra din uddannelsesretning');
 
   // Lokation
-  if (locationScore >= 92)    reasons.push('Jobbet er i din by');
-  else if (locationScore >= 72) reasons.push('Jobbet er i din region');
-  else if (locationScore <= 35) reasons.push('Jobbet er i en anden landsdel');
+  if (locationScore >= 92)        reasons.push('Jobbet er i din by');
+  else if (locationScore >= 72)   reasons.push('Jobbet er i din region');
+  else if (locationScore <= 40 && hasUserLocation)
+    reasons.push(`Jobbet er ikke i dit foretrukne område${mobilityPenalty < 0 ? ' (trækker ned)' : ''}`);
+  else if (locationScore <= 60 && prefs?.mobility === 'same_city')
+    reasons.push('Du søger kun lokalt — jobbet er lidt langt væk');
 
   // Seniority
   if (senScore >= 95)         reasons.push('Erfaringskrav passer præcist til dit niveau');
@@ -1011,7 +1028,9 @@ function scoreJob(profile, job, prefs) {
   return {
     total, coverageScore, titleScore, senScore, kwScore, domainScore,
     locationScore, languageScore, educationScore, contractScore,
-    transferBonus: transfer.bonus, aiBonus, gradBonus, matched, gaps, reasons,
+    transferBonus: transfer.bonus, aiBonus, gradBonus,
+    locationPenalty, mobilityPenalty,
+    matched, gaps, reasons,
     descQuality, relevance,
   };
 }
