@@ -289,60 +289,129 @@ def fetch_jobnet_page(offset=0, search=""):
 
 # ─── AI CV-analyse ────────────────────────────────────────────────────────────
 
-CV_SYSTEM = """Du er en erfaren headhunter og rekrutteringsekspert med 20 års erfaring.
-Din opgave er at analysere CV'er dybdegående og identificere ALLE kompetencer – både eksplicitte og underliggende.
-Du forstår transferable skills: en tekstildesigner kan sagtens arbejde med produktdesign, en journalist med content marketing osv.
-Returnér KUN gyldig JSON – ingen markdown, ingen forklaring."""
+CV_SYSTEM = """Du er verdens bedste headhunter og karriererådgiver med 20 års erfaring.
+Din specialitet: at læse CV'er ekstremt dybdegående og udtrække ALLE kompetencer — eksplicitte, implicitte og underliggende.
+Du ved at et CV altid underrapporterer kandidatens reelle kompetencer. Derfor graver du dybt.
+Returnér KUN gyldig JSON – ingen markdown, ingen forklaring udenfor JSON."""
 
-CV_PROMPT = """Analyser dette CV grundigt og returnér præcis dette JSON-format:
+CV_PROMPT = """Analyser dette CV og returnér præcis dette JSON-format.
+
+VIGTIGT: Du SKAL returnere mindst 30 skills totalt. Hellere 40-50. Et CV på 1 side = mindst 30 skills.
+Returnér KUN gyldig JSON.
 
 {
   "skills": [
-    {"name": "Python", "cat": "Backend", "confidence": 95, "inferred": false, "hits": 3},
-    {"name": "Projektledelse", "cat": "Produkt & Agile", "confidence": 85, "inferred": true, "hits": 4}
+    {"name": "SQL", "cat": "Data & AI", "confidence": 95, "inferred": false, "hits": 2},
+    {"name": "Python", "cat": "Backend", "confidence": 90, "inferred": false, "hits": 1},
+    {"name": "Power BI", "cat": "Data & AI", "confidence": 95, "inferred": false, "hits": 1},
+    {"name": "Projektledelse", "cat": "Produkt & Agile", "confidence": 92, "inferred": false, "hits": 3},
+    {"name": "Stakeholder Management", "cat": "Bløde", "confidence": 88, "inferred": true, "hits": 4},
+    {"name": "Data-driven beslutninger", "cat": "Data & AI", "confidence": 85, "inferred": true, "hits": 3},
+    {"name": "Procesoptimering", "cat": "Forretning", "confidence": 85, "inferred": true, "hits": 2},
+    {"name": "IT-strategi", "cat": "Øvrige IT", "confidence": 82, "inferred": true, "hits": 2},
+    {"name": "Change Management", "cat": "Forretning", "confidence": 80, "inferred": true, "hits": 2},
+    {"name": "Governance", "cat": "Forretning", "confidence": 78, "inferred": true, "hits": 2},
+    {"name": "Rapportering", "cat": "Data & AI", "confidence": 85, "inferred": true, "hits": 3},
+    {"name": "Finansielle systemer", "cat": "Økonomi & Regnskab", "confidence": 75, "inferred": true, "hits": 2}
   ],
   "roleFamily": "Data & AI",
-  "seniority": "Mid-level",
-  "years": 4,
+  "seniority": "Junior",
+  "years": 2,
   "education": "Kandidat",
   "languages": ["Dansk", "Engelsk"],
   "location": "København",
-  "strengths": ["4 års erfaring med dataanalyse", "Selvstændig projektleder på 3+ projekter"],
-  "domains": ["Tekstildesign", "Bæredygtigt mode", "Materialeteknologi"],
-  "adjacent_roles": ["Produktdesigner", "Bæredygtighedskonsulent", "Brand Manager"],
-  "summary": "Erfaren tekstildesigner med stærk baggrund i bæredygtige materialer",
-  "context_keywords": ["cirkulær økonomi", "leverandørstyring", "kollektionsudvikling"],
-  "wildcard_roles": ["UX Researcher", "Bæredygtighedskonsulent", "Indkøbsansvarlig i modebranchen"],
-  "working_style": "analytisk og struktureret med stærkt visuelt sans og evne til at omsætte komplekse krav til konkrete løsninger",
-  "discovery_reasoning": "Tekstildesignerens erfaring med materialevalg og leverandørkæder giver direkte overførbar viden til produktionsoptimering og indkøb i fremstillingsindustrien"
+  "strengths": ["Konkret styrke med tal fra CV", "Anden styrke", "Tredje styrke"],
+  "domains": ["Asset Management", "Finansiel sektor", "IT-arkitektur"],
+  "adjacent_roles": ["Data Analyst", "Business Analyst", "IT-projektleder", "Digital Transformation Consultant"],
+  "summary": "En præcis, professionel sætning om personen",
+  "context_keywords": ["digitalisering", "procesoptimering", "data-driven", "IT-arkitektur", "finansielle systemer"],
+  "wildcard_roles": ["Product Manager", "Management Consultant", "Business Intelligence Analyst"],
+  "working_style": "Analytisk og struktureret med stærk evne til at navigere mellem teknik og forretning",
+  "discovery_reasoning": "Kombinationen af IT-baggrund og finansiel erfaring giver unik fordel i fintech og digital transformation"
 }
 
-REGLER FOR SKILLS:
-- Udled ALLE kompetencer fra CV'et – ikke kun direkte nævnte
-- inferred: false = eksplicit nævnt; inferred: true = udledt fra projekter/ansvar/kontekst
-- confidence: 50-100 (100 = mange eksplicitte beviser, 50 = svag indikation)
-- hits: antal gange kompetencen fremgår direkte eller indirekte
-- cat SKAL være én af: Frontend, Backend, Mobile, Data & AI, Cloud & DevOps, Design, Produkt & Agile, Marketing, Forretning, Bløde
-- Minimum 8 skills med inferred: true – læs AKTIVT mellem linjerne
-- Eksempler: "koordinerede 5 leverandører" → Leverandørstyring + Forhandling; "præsenterede for bestyrelsen" → Stakeholder Management
+═══════════════════════════════════════════════════════════
+REGLER FOR SKILLS — LÆS DETTE GRUNDIGT:
+═══════════════════════════════════════════════════════════
 
+MÅL: Minimum 30 skills. Gerne 40-50. Inkludér ALT:
+
+1. EKSPLICITTE SKILLS (inferred: false):
+   Alle tools, teknologier og metoder direkte nævnt i CV'et.
+   Eksempel: "SQL, Python, Power BI, SCRUM" → 4 separate skills
+
+2. UDLEDTE TEKNISKE SKILLS (inferred: true):
+   Hvad må de nødvendigvis have brugt?
+   "Data-driven frameworks" → Excel, data visualisering, analytisk tænkning
+   "Digital transformation" → change management, procesdesign, IT-arkitektur
+   "IT Architecture team" → enterprise architecture, teknologistrategi, systemdesign
+   "Automation opportunities" → procesautomatisering, RPA-tænkning, workflow-design
+
+3. UDLEDTE BLØDE SKILLS (inferred: true, cat: "Bløde"):
+   "Koordinerede meetings og workshops" → Facilitering + Mødeledelse
+   "Link between clients and portfolio managers" → Stakeholder Management + Relationspleje
+   "Translated operational insight into strategic improvements" → Strategisk tænkning + Kommunikation
+   "Aligned digital initiatives with strategic goals" → IT-strategi + Forandringsledelse
+   "Acted as link between clients, portfolio managers and traders" → Forhandling + Netværk
+
+4. DOMÆNE-VIDEN (inferred: true):
+   "DKK 800bn AUM" → Kapitalforvaltning, Finansielle markeder, Porteføljestyring
+   "Risk-mitigation" → Risikostyring, Compliance
+   "AML" → Anti-hvidvask, Regulatorisk compliance, KYC
+   "Client onboarding" → Kundeservice, CRM-processer
+
+5. AKADEMISKE/UDDANNELSESMÆSSIGE SKILLS:
+   "IT strategy, process optimization" (fra studie) → IT-strategi, Procesoptimering
+   "Digital transformation" (fra studie) → Digital transformation
+   "Business Economics & IT" → Forretningsforståelse, Økonomi, IT-forretning
+
+6. LEDELSES- OG KOORDINERINGSEVNER:
+   "Senior management" → Rapportering til ledelse, Ledelseskommunikation
+   "Multiple teams" → Tværfagligt samarbejde, Koordinering
+   "Workshops" → Workshop-facilitering, Træning
+
+KATEGORIER (cat SKAL være én af disse):
+Frontend, Backend, Mobile, Data & AI, Cloud & DevOps, Design,
+Produkt & Agile, Marketing, Forretning, Bløde,
+Økonomi & Regnskab, HR & Rekruttering, Sundhed & Omsorg,
+Undervisning, Jura & Compliance, Kommunikation,
+Handel & Service, Produktion & Teknik, Administration, Øvrige IT
+
+confidence: 60-100 (100 = eksplicit nævnt flere gange, 60 = svagt udledt)
+hits: antal belæg i CV'et (1-5+)
+
+═══════════════════════════════════════════════════════════
 REGLER FOR ØVRIGE FELTER:
-- seniority: "Junior" (0-2 år), "Mid-level" (2-5 år), "Senior" (5-10 år), "Lead / Manager" (10+ år eller lederansvar)
-- education: "PhD", "Kandidat", "Bachelor", "Gymnasial/EUD", "Bootcamp/Selvlært", eller null
-- location: bynavnet personen er baseret i (fra CV-adresse eller nævnte by) — brug dansk stavemåde, fx "København", "Aarhus", "Odense". Null hvis ikke nævnt.
-- domains: 2-5 specifikke fagdomæner personen har dyb ekspertise i
-- adjacent_roles: 4-8 jobtitler personen REALISTISK kan søge baseret på transferable skills
-- summary: 1 præcis sætning der beskriver personen professionelt
-- context_keywords: 5-10 nøgleord fra CV'ets kontekst der er vigtige for job-matching
-- strengths: 3-5 konkrete, evidensbaserede sætninger (citér specifikke tal/projekter fra CV'et)
-- wildcard_roles: 3-6 jobtitler personen ALDRIG HAR OVERVEJET men ville være overraskende gode til
-  Tænk som karriererådgiver: hvad ville overraske denne person positivt?
-  Eksempler: journalist → UX researcher (samme evne til at forstå brugerbehov og formidle)
-             lærer → L&D konsulent, change management (pædagogiske evner i erhvervslivet)
-             tekstildesigner → produktionsleder, indkøbsansvarlig (materialeekspertise + leverandørstyring)
-- working_style: 1-2 sætninger der beskriver HVORDAN personen arbejder (analytisk/kreativ/systemisk/relationel osv.)
-  Basér det på konkrete beviser fra CV'et – ikke generiske fraser
-- discovery_reasoning: 1-2 sætninger der forklarer HVORFOR de uventede roller giver mening for netop denne person
+═══════════════════════════════════════════════════════════
+
+seniority:
+  "Junior"       = 0-2 års erfaring ELLER stadig studerende
+  "Mid-level"    = 2-5 års erfaring
+  "Senior"       = 5-10 års erfaring
+  "Lead / Manager" = 10+ år ELLER dokumenteret lederansvar
+
+years: samlede år med reel erhvervserfaring (ikke studieaktiviteter)
+
+education: "PhD" / "Kandidat" / "Bachelor" / "Gymnasial/EUD" / "Bootcamp/Selvlært" / null
+  (igangværende kandidat = "Kandidat")
+
+location: bynavnet fra CV-adresse. Dansk stavemåde: "København", "Aarhus", "Odense". Null hvis ukendt.
+
+domains: 3-6 specifikke fagdomæner med dyb ekspertise (ikke generiske — vær præcis)
+
+adjacent_roles: 6-10 jobtitler personen REALISTISK kan søge NU baseret på erfaring+uddannelse
+
+summary: 1 skarp, præcis sætning (maks 20 ord) der indfanger personen
+
+context_keywords: 8-15 fagspecifikke nøgleord vigtige for job-matching (ikke generiske ord)
+
+strengths: 4-6 konkrete sætninger med specifikke tal/projekter fra CV'et
+
+wildcard_roles: 4-7 overraskende men realistiske roller (dem personen ikke selv ville tænke på)
+
+working_style: 2-3 sætninger baseret på KONKRETE beviser fra CV'et
+
+discovery_reasoning: 2-3 sætninger om HVORFOR de uventede roller giver mening for netop denne person
 
 CV:
 """
@@ -407,14 +476,14 @@ def analyze_cv_with_ai(cv_text, ai_type, ai_client):
     try:
         if ai_type == "openai":
             resp = ai_client.chat.completions.create(
-                model="gpt-4o-mini", max_tokens=2500, temperature=0.3,
+                model="gpt-4o-mini", max_tokens=5000, temperature=0.2,
                 messages=[{"role":"system","content":CV_SYSTEM},{"role":"user","content":CV_PROMPT+text}]
             )
             raw = resp.choices[0].message.content.strip()
             model = "gpt-4o-mini"
         else:
             resp = ai_client.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=2500,
+                model="claude-haiku-4-5-20251001", max_tokens=5000,
                 system=CV_SYSTEM,
                 messages=[{"role":"user","content":CV_PROMPT+text}]
             )
