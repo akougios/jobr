@@ -26,6 +26,67 @@ const SKILL_GROUPS = {
   "Marketing":    ["seo","sem","google ads","facebook ads","content marketing","email marketing","hubspot","salesforce","crm","google analytics","growth hacking","b2b marketing","demand generation","copywriting"],
   "Forretning":   ["forretningsudvikling","projektledelse","budgettering","finansiel analyse","excel","powerpoint","sql","strategi","konsulentvirksomhed","change management","b2b","saas"],
   "Bløde":        ["kommunikation","ledelse","teamledelse","præsentation","forhandling","samarbejde","problemløsning","analytisk","selvstændig","kreativ"],
+  // ── Udvidede danske fagkategorier ────────────────────────────────────────────
+  "Handel & Service":  ["kundeservice","detailhandel","butiksbetjening","kassebetjening","salgsassistent","varemodtagelse","merchandising","lagerstyring","inventory","butiksdrift","kasseoptælling","salgsteknik"],
+  "Produktion & Teknik":["vedligehold","montage","maskinbetjening","produktion","kvalitetskontrol","cnc","gaffeltruck","truck","lager","logistik","pakkemedarbejder","forsyningskæde","lean","5s","iso","el-installation","vvs","tømrer","maler","murer","mekaniker","reparation","teknisk service","eventopsætning","eventudstyr","stageopsætning","rigger"],
+  "Administration":    ["office 365","word","outlook","teams","sap","navision","dynamics 365","bogføring","fakturering","sagsbehandling","administration","koordinering","planlægning","receptionist","sekretær","dokumenthåndtering","arkivering"],
+  "Økonomi & Regnskab":["regnskab","bogføring","revision","controlling","budget","faktura","debitorer","kreditorer","ifrs","skat","moms","årsregnskab","likviditet","cash flow","balance","resultatopgørelse","regnskabsanalyse"],
+  "HR & Rekruttering": ["rekruttering","onboarding","medarbejderudvikling","lønbehandling","arbejdsmiljø","personalehåndtering","hr administration","employer branding","talentudvikling","hr-system","kompetenceudvikling","trivselsmåling"],
+  "Sundhed & Omsorg":  ["sygepleje","sosu","hjemmepleje","plejehjem","medicin","patient","omsorg","klinisk","praktiserende","socialrådgivning","psykologi","terapi","ergoterapi","fysioterapi","botilbud","handicapstøtte","pæd agogik","dagsinstitution"],
+  "Undervisning":      ["undervisning","pædagogik","kursusledelse","e-learning","uddannelse","coaching","mentoring","vejledning","instruktør","formidling","klasseundervisning","curriculum","læringsdesign"],
+  "Jura & Compliance": ["gdpr","compliance","kontraktret","arbejdsret","forsikring","due diligence","risikostyring","regulering","gdpr-rådgivning","persondatalovgivning","retsrådgivning"],
+  "Kommunikation":     ["journalistik","redaktion","copywriting","pr","kommunikationsstrategi","sociale medier","fotografering","videoproduktion","podcast","nyhedsformidling","pressehåndtering","storytelling","indholdsstrategi"],
+};
+
+/* ── Semantiske synonymer: jobopslag bruger disse ord → matcher disse skills ── */
+const SKILL_SYNONYMS = {
+  // Tech → skills
+  'programmering':        ['python','javascript','java','c#','golang'],
+  'kodning':              ['python','javascript','java'],
+  'softwareudvikling':    ['python','javascript','java','node.js','react'],
+  'webudvikling':         ['javascript','react','html','css','next.js'],
+  'databehandling':       ['sql','pandas','excel','python'],
+  'dataanalyse':          ['sql','excel','power bi','tableau','analytisk','pandas'],
+  'maskinlæring':         ['machine learning','scikit-learn','tensorflow','pytorch'],
+  'kunstig intelligens':  ['machine learning','llm','nlp'],
+  'databasestyring':      ['sql','postgresql','mysql','mongodb'],
+  'cloud-løsninger':      ['aws','azure','gcp','docker','kubernetes'],
+  'infrastruktur':        ['linux','docker','kubernetes','terraform','aws'],
+  'it-support':           ['linux','windows','it'],
+  'systemadministration': ['linux','windows','azure','aws'],
+  // Design/UX
+  'brugergrænseflader':   ['ux design','ui design','figma'],
+  'brugervenlighed':      ['ux design','usability testing','user research'],
+  'prototyper':           ['figma','prototyping','ux design'],
+  // Forretning
+  'projektstyring':       ['projektledelse','scrum','agile','jira'],
+  'forretningsstrategi':  ['strategi','forretningsudvikling','konsulentvirksomhed'],
+  'kundehåndtering':      ['crm','kundeservice','salesforce','hubspot'],
+  'digitalisering':       ['projektledelse','change management','saas'],
+  // Produktion/håndværk
+  'vedligehold':          ['vedligehold','teknisk service','reparation'],
+  'vedligeholdelse':      ['vedligehold','teknisk service','reparation'],
+  'serviceopgaver':       ['teknisk service','kundeservice','vedligehold'],
+  'eventopsætning':       ['eventopsætning','eventudstyr','montage'],
+  'stageopsætning':       ['stageopsætning','rigger','eventopsætning'],
+  'pakkemedarbejder':     ['pakkemedarbejder','lager','logistik'],
+  'lagerhåndtering':      ['lager','logistik','lagerstyring'],
+  'gaffeltruck':          ['gaffeltruck','truck','lager'],
+  // Økonomi
+  'regnskabsaflæggelse':  ['regnskab','bogføring','årsregnskab','ifrs'],
+  'finansiel rapportering':['regnskab','controlling','ifrs','årsregnskab'],
+  'budgetopfølgning':     ['budget','controlling','finansiel analyse','excel'],
+  'kreditorstyring':      ['kreditorer','bogføring','regnskab'],
+  // HR
+  'personaleledelse':     ['ledelse','teamledelse','hr administration'],
+  'medarbejdertrivsel':   ['trivselsmåling','hr administration','kommunikation'],
+  // Kommunikation
+  'indholdsproduktion':   ['copywriting','content marketing','indholdsstrategi'],
+  'sociale medier':       ['sociale medier','content marketing','seo'],
+  'brandingopgaver':      ['branding','kommunikation','marketing'],
+  // Sundhed
+  'pleje af borgere':     ['omsorg','sosu','hjemmepleje'],
+  'medicingivning':       ['sygepleje','sosu','medicin'],
 };
 // Flat list with category attached
 const ALL_SKILLS = Object.entries(SKILL_GROUPS).flatMap(([cat,skills]) =>
@@ -509,6 +570,63 @@ const DOMAIN_TRANSFER_MAP = {
 
 /* ═══════════════════════ MATCHING ENGINE v2 ════════════════════════════════ */
 
+/* ── NLP: Udtrækker udtrykkeligt nævnte krav fra jobteksten ─────────────────── *
+ * Finder fraser som "erfaring med X", "kendskab til X", "du har X" osv.
+ * og returnerer en liste af normaliserede krav-fraser.                          */
+function extractJobRequirements(text) {
+  const t = text.toLowerCase();
+  const found = new Set();
+
+  const patterns = [
+    /erfaring\s+med\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /erfaring\s+inden\s+for\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /kendskab\s+til\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /viden\s+om\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /du\s+behersker\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /du\s+har\s+erfaring\s+med\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /solid\s+(?:erfaring|viden|baggrund)\s+(?:med|inden\s+for|om|i)\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /kompetencer\s+inden\s+for\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /stærke\s+kompetencer\s+(?:inden\s+for|i)\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
+    /experience\s+with\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
+    /experience\s+in\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
+    /knowledge\s+of\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
+    /proficient\s+in\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
+  ];
+
+  patterns.forEach(re => {
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      const phrase = m[1].trim().replace(/\s+/g,' ').replace(/[*•\-]+$/, '').trim();
+      if (phrase.length >= 2 && phrase.length <= 45 && !/^\d+$/.test(phrase))
+        found.add(phrase);
+    }
+  });
+
+  return [...found];
+}
+
+/* ── Matcher et krav-udtryk mod CV-skills via direkte + synonym-opslag ───────── */
+function matchRequirementToCV(req, cvSkillNames) {
+  const rn = req.toLowerCase().trim();
+
+  // Direkte substring-match mod CV-skills
+  for (const sk of cvSkillNames) {
+    if (sk.length < 2) continue;
+    if (rn.includes(sk) || sk.includes(rn)) return sk;
+  }
+
+  // Synonym-opslag: hvert synonym-nøgleord der findes i kravet → tjek de mappede skills
+  for (const [phrase, mapped] of Object.entries(SKILL_SYNONYMS)) {
+    if (rn.includes(phrase)) {
+      for (const ms of mapped) {
+        if (cvSkillNames.includes(ms)) return ms;
+      }
+    }
+  }
+
+  return null;
+}
+
 /* ── Udtrækker krav-sektionen fra jobbeskrivelse (DK + EN) ─────────────────── */
 function extractRequirementsSection(desc) {
   if (!desc) return '';
@@ -530,10 +648,11 @@ function computeSkillCoverage(profile, job) {
   const jobSkillSet  = new Set([...jobKwSet, ...jobExtracted.map(s => norm(s.name))]);
 
   const cvMap = new Map(profile.skills.map(s => [norm(s.name), s]));
+  const cvSkillNames = [...cvMap.keys()];
   const matched = [];
   let weightedCoverage = 0;
 
-  // Pass 1: CV skills mod jobbets udtrukne skill-liste
+  // Pass 1: CV skills mod jobbets udtrukne skill-liste (direkte match)
   jobSkillSet.forEach(skill => {
     const cvSk = cvMap.get(skill);
     if (cvSk) {
@@ -544,7 +663,7 @@ function computeSkillCoverage(profile, job) {
     }
   });
 
-  // Pass 2: scan CV skills direkte i fuld jobtekst (fanger ting keyword-listen glemte)
+  // Pass 2: scan CV skills direkte i fuld jobtekst (word-boundary regex)
   cvMap.forEach((sk, skillName) => {
     if (skillName.length < 3 || matched.includes(sk.name)) return;
     const esc = skillName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -555,10 +674,41 @@ function computeSkillCoverage(profile, job) {
     }
   });
 
-  // Score: weighted coverage / jobbets skill-count (mindst 3 for ikke at over-score)
-  const denominator = Math.max(jobSkillSet.size, 3);
-  const score = Math.min(Math.round((weightedCoverage / denominator) * 100), 100);
-  return { score, matched, jobSkillSet };
+  // Pass 3: semantisk synonym-match — CV-skills via SKILL_SYNONYMS mod jobtekst
+  // (fanger "databehandling" → pandas, "programmering" → python osv.)
+  for (const [phrase, mappedSkills] of Object.entries(SKILL_SYNONYMS)) {
+    if (!fullText.includes(phrase)) continue;
+    for (const ms of mappedSkills) {
+      if (matched.includes(ms)) continue;
+      const cvSk = cvMap.get(ms);
+      if (cvSk) {
+        matched.push(cvSk.name);
+        weightedCoverage += cvSk.inferred ? 0.5 : 0.85;
+        break; // én synonym-match per phrase er nok
+      }
+    }
+  }
+
+  // Pass 4: NLP-udtræk af jobbets eksplicitte krav ("erfaring med X") → match mod CV
+  const jobReqs = extractJobRequirements(job.description || '');
+  let nlpMatches = 0;
+  jobReqs.forEach(req => {
+    const hit = matchRequirementToCV(req, cvSkillNames);
+    if (hit && !matched.includes(hit)) {
+      matched.push(hit);
+      const cvSk = cvMap.get(hit);
+      weightedCoverage += cvSk ? (cvSk.inferred ? 0.5 : 0.9) : 0.7;
+      nlpMatches++;
+    }
+  });
+
+  // Score: weighted coverage / jobbets skill-count (mindst 4 for ikke at over-score)
+  // Bruger NLP-krav som denominator hvis vi fik nok ud af jobbet
+  const effectiveDenominator = jobReqs.length >= 4
+    ? Math.max(jobReqs.length, jobSkillSet.size, 4)
+    : Math.max(jobSkillSet.size, 4);
+  const score = Math.min(Math.round((weightedCoverage / effectiveDenominator) * 100), 100);
+  return { score, matched, jobSkillSet, jobReqs, nlpMatches };
 }
 
 /* ── 2. Titel/Rolle-alignment: jobtitel vs. CV-roller + adjacent_roles ───────── */
