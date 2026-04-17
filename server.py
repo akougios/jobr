@@ -199,15 +199,46 @@ def parse_date(s):
 
 
 SKILL_KWS = [
+    # Tech / kode
     "python","javascript","typescript","java","golang","rust","php","swift","kotlin",
     "react","vue","angular","next.js","node.js","django","flask","fastapi","spring",
-    "sql","postgresql","mysql","mongodb","redis","elasticsearch","kafka","spark",
-    "pandas","numpy","scikit-learn","tensorflow","pytorch","machine learning","nlp",
-    "aws","azure","gcp","docker","kubernetes","terraform","ci/cd","linux",
-    "figma","ux","ui","design systems","user research",
-    "excel","jira","scrum","agile","kanban","hubspot","salesforce","power bi","tableau",
-    "seo","sem","content marketing","b2b","saas",
-    "projektledelse","kommunikation","ledelse","analytisk","forretningsudvikling",
+    "sql","postgresql","mysql","mongodb","redis","elasticsearch","kafka","spark","dbt",
+    "pandas","numpy","scikit-learn","tensorflow","pytorch","machine learning","nlp","llm",
+    "aws","azure","gcp","docker","kubernetes","terraform","ci/cd","linux","bash","git",
+    "rest api","graphql","microservices","api design","datadog","grafana",
+    # Data & AI
+    "power bi","tableau","looker","data science","data modeling","data engineering",
+    "rag","copilot","generative ai","embeddings","vector database","mlops","airflow",
+    "business intelligence","analytisk","dataanalyse","rapportering","dashboards",
+    # Design & UX
+    "figma","sketch","adobe xd","ux design","ui design","user research","usability testing",
+    "prototyping","wireframing","accessibility","design systems","a/b testing",
+    # Produkt & agile
+    "jira","confluence","scrum","agile","kanban","okr","kpi","roadmap",
+    "product management","product owner","scrum master","user stories",
+    # Marketing & salg
+    "seo","sem","google ads","content marketing","email marketing","hubspot","salesforce",
+    "crm","google analytics","growth hacking","b2b","saas","copywriting","social media",
+    # Office & IT
+    "excel","powerpoint","word","sharepoint","power automate","power apps",
+    "microsoft 365","office 365","dynamics 365","sap","navision","visio","ms project",
+    # Forretning & bløde
+    "strategi","projektledelse","ledelse","teamledelse","kommunikation","samarbejde",
+    "analytisk","forhandling","præsentation","stakeholder management","forandringsledelse",
+    "procesoptimering","forretningsudvikling","konsulentvirksomhed","digital transformation",
+    "risikostyring","compliance","governance","rapportering","budgettering",
+    "finansiel analyse","it-arkitektur","selvstændig","kreativ","problemløsning",
+    # Økonomi
+    "regnskab","bogføring","controlling","revision","budget","ifrs","moms",
+    "finansiel rapportering","årsregnskab","likviditet","cash flow",
+    # HR
+    "rekruttering","onboarding","medarbejderudvikling","hr administration",
+    "lønbehandling","employer branding","trivselsmåling",
+    # Jura & compliance
+    "gdpr","aml","kyc","due diligence","kontraktret","arbejdsret","persondatalovgivning",
+    # Kommunikation & medie
+    "pr","kommunikationsstrategi","sociale medier","journalistik","redaktion",
+    "videoproduktion","fotografering","storytelling","indholdsstrategi",
 ]
 
 def extract_kws(text):
@@ -333,6 +364,22 @@ Returnér KUN gyldig JSON.
 ═══════════════════════════════════════════════════════════
 REGLER FOR SKILLS — LÆS DETTE GRUNDIGT:
 ═══════════════════════════════════════════════════════════
+
+KRITISK: Brug ALTID DANSKE navne for generiske kompetencer:
+  "strategi" IKKE "strategy"
+  "ledelse" IKKE "management" eller "leadership"
+  "projektledelse" IKKE "project management"
+  "kommunikation" IKKE "communication"
+  "samarbejde" IKKE "collaboration" eller "teamwork"
+  "analytisk" IKKE "analytical"
+  "forhandling" IKKE "negotiation"
+  "præsentation" IKKE "presentation"
+  "forandringsledelse" IKKE "change management"
+  "risikostyring" IKKE "risk management"
+  "procesoptimering" IKKE "process optimization"
+  "rapportering" IKKE "reporting"
+  "stakeholder management" (behold engelsk — standard fagterm)
+  Teknologier beholder engelsk navn: Python, SQL, Power BI, Azure osv.
 
 MÅL: Minimum 30 skills. Gerne 40-50. Inkludér ALT:
 

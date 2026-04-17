@@ -145,6 +145,102 @@ const SKILL_SYNONYMS = {
   // Sundhed
   'pleje af borgere':     ['omsorg','sosu','hjemmepleje'],
   'medicingivning':       ['sygepleje','sosu','medicin'],
+
+  // ── Udvidede danske job-posting vendinger ─────────────────────────────────
+  // Strategi & ledelse
+  'strategisk':           ['strategi','forretningsudvikling','analytisk'],
+  'strategiske':          ['strategi','forretningsudvikling'],
+  'strategisk tænkning':  ['strategi','analytisk','forretningsudvikling'],
+  'forretningsforståelse':['forretningsudvikling','analytisk','strategi'],
+  'forretningsmæssig':    ['forretningsudvikling','analytisk'],
+  'ledererfaring':        ['ledelse','teamledelse'],
+  'ledelseserfaring':     ['ledelse','teamledelse'],
+  'personaleansvar':      ['ledelse','teamledelse'],
+  'teamansvar':           ['teamledelse','ledelse'],
+  'drive':                ['ledelse','selvstændig','projektledelse'],
+  'initiativ':            ['selvstændig','kreativ'],
+  'selvstændig':          ['selvstændig','projektledelse'],
+  'proaktiv':             ['selvstændig','kreativ'],
+  // Analyse & data
+  'analytiske evner':     ['analytisk','dataanalyse'],
+  'analytisk stærk':      ['analytisk','dataanalyse'],
+  'stærke analytiske':    ['analytisk','dataanalyse','sql'],
+  'dataorienteret':       ['analytisk','sql','dataanalyse'],
+  'databaseret':          ['analytisk','sql','dataanalyse'],
+  'kvantitativ':          ['analytisk','excel','sql'],
+  'talstærk':             ['analytisk','excel','finansiel analyse'],
+  'excel avanceret':      ['excel','analytisk'],
+  'avanceret excel':      ['excel','analytisk'],
+  'nøgletal':             ['kpi','analytisk','excel'],
+  'kpi':                  ['kpi','analytisk','excel','rapportering'],
+  'overblik':             ['analytisk','projektledelse','samarbejde'],
+  // Kommunikation & præsentation
+  'skriftlig formidling': ['kommunikation','copywriting'],
+  'mundtlig formidling':  ['kommunikation','præsentation'],
+  'formidlingsevner':     ['kommunikation','præsentation'],
+  'formidlingsevne':      ['kommunikation','præsentation'],
+  'præsentationsteknik':  ['præsentation','kommunikation'],
+  'stærk kommunikator':   ['kommunikation','præsentation'],
+  'kommunikere komplekst':['kommunikation','præsentation','analytisk'],
+  'skabe relationer':     ['samarbejde','stakeholder management','kommunikation'],
+  'relationsopbygning':   ['samarbejde','stakeholder management'],
+  'netværk':              ['samarbejde','stakeholder management','forretningsudvikling'],
+  // Projekt & forandring
+  'projektstyring':       ['projektledelse','scrum','agile'],
+  'forandringsledelse':   ['forandringsledelse','projektledelse','kommunikation'],
+  'forandringsprocesser': ['forandringsledelse','projektledelse'],
+  'implementering':       ['projektledelse','forandringsledelse','procesoptimering'],
+  'implementere':         ['projektledelse','procesoptimering'],
+  'koordinering':         ['projektledelse','samarbejde'],
+  'koordinere':           ['projektledelse','samarbejde'],
+  'planlægning':          ['projektledelse','analytisk'],
+  'prioritering':         ['projektledelse','selvstændig','analytisk'],
+  'eksekvering':          ['projektledelse','selvstændig'],
+  'eksekvere':            ['projektledelse','selvstændig'],
+  'leverancer':           ['projektledelse','samarbejde'],
+  // Tværfagligt samarbejde
+  'tværfagligt':          ['samarbejde','stakeholder management','kommunikation'],
+  'tværorganisatorisk':   ['samarbejde','stakeholder management'],
+  'på tværs af':          ['samarbejde','stakeholder management','projektledelse'],
+  'interessenter':        ['stakeholder management','kommunikation'],
+  'interne og eksterne':  ['stakeholder management','kommunikation','samarbejde'],
+  'mange interessenter':  ['stakeholder management','kommunikation'],
+  'ledelsen':             ['kommunikation','ledelse','præsentation'],
+  'beslutningstag':       ['analytisk','stakeholder management','kommunikation'],
+  // Forretningsudvikling
+  'vækst':                ['forretningsudvikling','strategi','salg'],
+  'nye forretningsmuligheder':['forretningsudvikling','salg','strategi'],
+  'kommerciel':           ['forretningsudvikling','salg','strategi'],
+  'salgserfaring':        ['salg','forhandling','kommunikation'],
+  'kundekontakt':         ['kundeservice','kommunikation','samarbejde'],
+  'kunderelationer':      ['kundeservice','crm','samarbejde'],
+  // AI & teknologi
+  'kunstig intelligens':  ['machine learning','llm','python'],
+  'ai-løsninger':         ['machine learning','llm','python'],
+  'ai-modeller':          ['machine learning','llm','python'],
+  'ai-initiativer':       ['machine learning','strategi','projektledelse'],
+  'generative ai':        ['llm','machine learning','python'],
+  'llm':                  ['llm','machine learning','python'],
+  'rag-systemer':         ['llm','machine learning','python'],
+  'prompt engineering':   ['llm','machine learning'],
+  'machine learning':     ['machine learning','python','scikit-learn'],
+  'datamodeller':         ['data modeling','sql','analytisk'],
+  'dataplatform':         ['sql','cloud & devops','data science'],
+  'business intelligence':['power bi','tableau','sql','analytisk'],
+  'indsigtsfuld':         ['analytisk','kommunikation'],
+  // Risk & compliance
+  'risici':               ['risikostyring','analytisk'],
+  'risikovurdering':      ['risikostyring','analytisk'],
+  'regulatorisk':         ['compliance','governance','risikostyring'],
+  'lovgivning':           ['compliance','jura & compliance'],
+  'persondatalovgivning': ['gdpr','compliance'],
+  'databeskyttelse':      ['gdpr','compliance'],
+  // Økonomi
+  'budgetansvar':         ['budgettering','finansiel analyse','excel'],
+  'økonomisk overblik':   ['finansiel analyse','analytisk','excel'],
+  'regnskabsforståelse':  ['regnskab','finansiel analyse','excel'],
+  'finansielle resultater':['finansiel analyse','regnskab','analytisk'],
+  'p&l':                  ['finansiel analyse','budgettering','regnskab'],
 };
 // Flat list with category attached
 const ALL_SKILLS = Object.entries(SKILL_GROUPS).flatMap(([cat,skills]) =>
@@ -877,56 +973,132 @@ const DOMAIN_TRANSFER_MAP = {
 
 /* ── NLP: Udtrækker udtrykkeligt nævnte krav fra jobteksten ─────────────────── *
  * Finder fraser som "erfaring med X", "kendskab til X", "du har X" osv.
- * og returnerer en liste af normaliserede krav-fraser.                          */
+ * + bullet-point extraction fra krav-sektioner                                 */
 function extractJobRequirements(text) {
   const t = text.toLowerCase();
   const found = new Set();
+  const terminator = /[,;•\n\r*\(\)]|(?:\s{2,})|$/;
+  const cap = `([\\wæøå\\s\\-\\.\\/'&+#]{2,50}?)`;
+  const end = `(?=[,;•\\n\\r*]|\\s{2,}|$)`;
 
   const patterns = [
-    /erfaring\s+med\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /erfaring\s+inden\s+for\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /kendskab\s+til\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /viden\s+om\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /du\s+behersker\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /du\s+har\s+erfaring\s+med\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /solid\s+(?:erfaring|viden|baggrund)\s+(?:med|inden\s+for|om|i)\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /kompetencer\s+inden\s+for\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /stærke\s+kompetencer\s+(?:inden\s+for|i)\s+([\w\s\-\.\/&]{2,45}?)(?=[,;•\n*]|$)/gi,
-    /experience\s+with\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
-    /experience\s+in\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
-    /knowledge\s+of\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
-    /proficient\s+in\s+([\w\s\-\.\/&]{2,40}?)(?=[,;•\n*]|$)/gi,
+    // Dansk — direkte krav
+    new RegExp(`erfaring\\s+med\\s+${cap}${end}`, 'gi'),
+    new RegExp(`erfaring\\s+inden\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`erfaring\\s+fra\\s+${cap}${end}`, 'gi'),
+    new RegExp(`kendskab\\s+til\\s+${cap}${end}`, 'gi'),
+    new RegExp(`godt\\s+kendskab\\s+til\\s+${cap}${end}`, 'gi'),
+    new RegExp(`indgående\\s+kendskab\\s+til\\s+${cap}${end}`, 'gi'),
+    new RegExp(`viden\\s+om\\s+${cap}${end}`, 'gi'),
+    new RegExp(`viden\\s+inden\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+har\\s+erfaring\\s+med\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+har\\s+(?:stærke\\s+)?kompetencer\\s+(?:inden\\s+for|i)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+behersker\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+mestrer\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+er\\s+stærk\\s+i\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+kan\\s+${cap}${end}`, 'gi'),
+    new RegExp(`du\\s+forstår\\s+${cap}${end}`, 'gi'),
+    new RegExp(`solid(?:e)?\\s+(?:erfaring|viden|baggrund)\\s+(?:med|inden\\s+for|om|i)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`kompetencer\\s+(?:inden\\s+for|i)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`stærke\\s+kompetencer\\s+(?:inden\\s+for|i)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`flair\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`passion\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`interesse\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`arbejder\\s+med\\s+${cap}${end}`, 'gi'),
+    new RegExp(`har\\s+arbejdet\\s+med\\s+${cap}${end}`, 'gi'),
+    new RegExp(`baggrund\\s+(?:inden\\s+for|i|fra)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`forståelse\\s+for\\s+${cap}${end}`, 'gi'),
+    new RegExp(`indsigt\\s+i\\s+${cap}${end}`, 'gi'),
+    new RegExp(`(?:certificeret|certificering)\\s+i\\s+${cap}${end}`, 'gi'),
+    new RegExp(`vi\\s+forventer(?:\\s+at\\s+du\\s+har)?\\s+${cap}${end}`, 'gi'),
+    new RegExp(`vi\\s+s[øo]ger\\s+(?:en\\s+)?(?:\\w+\\s+)?(?:med|der\\s+har)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`det\\s+er\\s+en\\s+fordel\\s+(?:med|at\\s+have)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`gerne\\s+erfaring\\s+med\\s+${cap}${end}`, 'gi'),
+    // Engelsk
+    new RegExp(`experience\\s+(?:with|in|of)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`knowledge\\s+of\\s+${cap}${end}`, 'gi'),
+    new RegExp(`proficient\\s+in\\s+${cap}${end}`, 'gi'),
+    new RegExp(`proficiency\\s+(?:in|with)\\s+${cap}${end}`, 'gi'),
+    new RegExp(`skilled\\s+in\\s+${cap}${end}`, 'gi'),
+    new RegExp(`expertise\\s+in\\s+${cap}${end}`, 'gi'),
+    new RegExp(`strong\\s+background\\s+in\\s+${cap}${end}`, 'gi'),
+    new RegExp(`understanding\\s+of\\s+${cap}${end}`, 'gi'),
+    new RegExp(`familiar(?:ity)?\\s+with\\s+${cap}${end}`, 'gi'),
+    new RegExp(`ability\\s+to\\s+${cap}${end}`, 'gi'),
+    new RegExp(`you\\s+have\\s+(?:experience\\s+(?:with|in)\\s+)?${cap}${end}`, 'gi'),
+    new RegExp(`you\\s+(?:are|will\\s+be)\\s+(?:responsible\\s+for|working\\s+with)\\s+${cap}${end}`, 'gi'),
   ];
 
   patterns.forEach(re => {
     let m;
+    re.lastIndex = 0;
     while ((m = re.exec(t)) !== null) {
-      const phrase = m[1].trim().replace(/\s+/g,' ').replace(/[*•\-]+$/, '').trim();
-      if (phrase.length >= 2 && phrase.length <= 45 && !/^\d+$/.test(phrase))
+      const phrase = (m[1]||'').trim().replace(/\s+/g,' ').replace(/[*•\-–]+$/, '').trim();
+      if (phrase.length >= 2 && phrase.length <= 50 && !/^\d+$/.test(phrase) && !/^(og|eller|samt|en|et|at|de|den|det|the|and|or|a|an|in|of|for)$/.test(phrase))
         found.add(phrase);
     }
   });
 
+  // ── Bullet-point extraction fra krav-sektion ────────────────────────────────
+  // Mange jobopslag lister krav direkte som bullet points uden trigger-phrase
+  const reqSection = text.match(
+    /(?:krav|kvalifikationer|vi\s+s[øo]ger|du\s+har|du\s+bringer|requirements?|qualifications?|must[\s-]have|you\s+(?:have|bring))[\s\S]{0,30}\n([\s\S]{0,1200}?)(?:\n\n|\n[A-Z]|$)/i
+  );
+  if (reqSection) {
+    const bullets = reqSection[1].split(/\n/);
+    bullets.forEach(line => {
+      const clean = line.replace(/^[\s•\-*–►▸✓✔\d\.]+/, '').trim();
+      if (clean.length >= 3 && clean.length <= 60 && !/^\d+$/.test(clean)) {
+        // Kun korte, præcise linjer (sandsynligvis en skill/krav)
+        if (clean.split(' ').length <= 8) found.add(clean.toLowerCase());
+      }
+    });
+  }
+
   return [...found];
 }
 
-/* ── Matcher et krav-udtryk mod CV-skills via direkte + synonym-opslag ───────── */
+/* ── Matcher et krav-udtryk mod CV-skills via direkte + synonym + normalisering ── */
 function matchRequirementToCV(req, cvSkillNames) {
   const rn = req.toLowerCase().trim();
+  const rnNorm = normalizeSkillName(rn); // oversæt evt. engelsk krav til dansk
 
-  // Direkte substring-match mod CV-skills
+  // 1. Direkte eller normaliseret substring-match mod CV-skills
   for (const sk of cvSkillNames) {
     if (sk.length < 2) continue;
+    if (rn === sk || rnNorm === sk) return sk;
     if (rn.includes(sk) || sk.includes(rn)) return sk;
+    if (rnNorm !== rn && (rnNorm.includes(sk) || sk.includes(rnNorm))) return sk;
   }
 
-  // Synonym-opslag: hvert synonym-nøgleord der findes i kravet → tjek de mappede skills
+  // 2. Tjek engelske aliasser: kravet er på dansk men CV-skill er alias
+  for (const [en, da] of Object.entries(SKILL_NORMALIZE)) {
+    if (rn.includes(en) && cvSkillNames.includes(da)) return da;
+    if (rn.includes(da) && cvSkillNames.includes(da)) return da;
+  }
+
+  // 3. Synonym-opslag: job-phrase → mappede skills → CV
   for (const [phrase, mapped] of Object.entries(SKILL_SYNONYMS)) {
-    if (rn.includes(phrase)) {
+    if (rn.includes(phrase) || phrase.includes(rn)) {
       for (const ms of mapped) {
         if (cvSkillNames.includes(ms)) return ms;
       }
     }
+  }
+
+  // 4. Word-overlap scoring: krav og skill deler nok ord til at det er et match
+  const stopWords = new Set(['og','eller','med','for','til','af','en','et','er','i','på','at','de','den','det','the','and','or','a','an','in','of','for','with','strong','solid','good']);
+  const rnWords = rn.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+  if (rnWords.length > 0) {
+    let bestSk = null, bestScore = 0;
+    for (const sk of cvSkillNames) {
+      if (sk.length < 3) continue;
+      const skWords = sk.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+      const hits = rnWords.filter(w => skWords.some(sw => sw.includes(w) || w.includes(sw))).length;
+      const score = hits / Math.max(rnWords.length, skWords.length);
+      if (score >= 0.6 && score > bestScore) { bestScore = score; bestSk = sk; }
+    }
+    if (bestSk) return bestSk;
   }
 
   return null;
