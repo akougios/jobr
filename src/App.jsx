@@ -11,8 +11,29 @@ const API_BASE = (window.location.hostname === 'localhost' || window.location.ho
   ? ''
   : RAILWAY_URL;
 
-// Supabase klient
-const _sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Supabase klient — bruger sessionStorage som default (slettes når browser lukkes)
+// "Forbliv logget ind" skifter til localStorage via storageKey-trick ved login
+const _sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    storage: window.sessionStorage,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  }
+});
+// Hjælpefunktion: skift til localStorage-baseret persistence
+function enablePersistentLogin() {
+  // Kopiér session fra sessionStorage → localStorage så den overlever genstart
+  const key = Object.keys(window.sessionStorage).find(k => k.startsWith('sb-'));
+  if (key) {
+    window.localStorage.setItem(key, window.sessionStorage.getItem(key));
+  }
+}
+function disablePersistentLogin() {
+  Object.keys(window.localStorage).filter(k => k.startsWith('sb-')).forEach(k => {
+    window.localStorage.removeItem(k);
+  });
+}
 
 /* ═══════════════════════ SKILL TAXONOMY ═══════════════════════════════════ */
 const SKILL_GROUPS = {
@@ -2920,6 +2941,7 @@ const LoginScreen = ({onLogin}) => {
   const [loading,setLoading]   = useState(false);
   const [error,setError]       = useState('');
   const [message,setMessage]   = useState('');
+  const [rememberMe,setRememberMe] = useState(false);
 
   const submit = async e => {
     e.preventDefault(); setLoading(true); setError('');
@@ -2932,6 +2954,8 @@ const LoginScreen = ({onLogin}) => {
       } else {
         const {data,error:err} = await _sb.auth.signInWithPassword({email,password});
         if (err) throw err;
+        if (rememberMe) enablePersistentLogin();
+        else disablePersistentLogin();
         onLogin(data.user);
       }
     } catch(e) { setError(e.message); }
@@ -2983,12 +3007,19 @@ const LoginScreen = ({onLogin}) => {
                 style={{width:'100%',padding:'10px 12px',border:'1px solid var(--border2)',background:'var(--surface-low)',fontSize:14,outline:'none',boxSizing:'border-box'}}
                 placeholder="dig@email.dk"/>
             </div>
-            <div style={{marginBottom:18}}>
+            <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,letterSpacing:'.05em',color:'var(--muted)',marginBottom:5,textTransform:'uppercase'}}>Adgangskode</div>
               <input type="password" value={password} onChange={e=>setPassword(e.target.value)} required
                 style={{width:'100%',padding:'10px 12px',border:'1px solid var(--border2)',background:'var(--surface-low)',fontSize:14,outline:'none',boxSizing:'border-box'}}
                 placeholder="••••••••"/>
             </div>
+            {mode === 'login' && (
+              <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:18,cursor:'pointer',userSelect:'none'}}>
+                <input type="checkbox" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)}
+                  style={{width:15,height:15,accentColor:'var(--navy)',cursor:'pointer'}}/>
+                <span style={{fontSize:13,color:'var(--muted)'}}>Forbliv logget ind</span>
+              </label>
+            )}
             {error   && <div style={{color:'var(--red)',fontSize:13,marginBottom:12,padding:'8px 12px',background:'#fff5f5'}}>{error}</div>}
             {message && <div style={{color:'var(--green)',fontSize:13,marginBottom:12,padding:'8px 12px',background:'var(--green-bg)'}}>{message}</div>}
             <button type="submit" disabled={loading} style={{
