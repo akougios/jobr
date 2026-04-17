@@ -713,7 +713,7 @@ function getTransferBonus(profile, jobText) {
   (profile.adjacent_roles||[]).forEach(role => {
     const rn = norm(role);
     const words = rn.split(/\s+/).filter(w => w.length > 4);
-    const jobTitleNorm = norm(job?.title || jt.split(' ').slice(0,5).join(' '));
+    const jobTitleNorm = jt.split(' ').slice(0,5).join(' ');
     if (words.some(w => jobTitleNorm.includes(w))) {
       bonus += 12;
       reasons.push(`Nærliggende rolle: ${role}`);
