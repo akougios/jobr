@@ -1451,6 +1451,77 @@ const DANISH_CITIES = [
   'Køge','Holstebro','Helsingør','Hillerød','Slagelse','Holbæk','Svendborg',
   'Sønderborg','Ikast','Skive','Aabenraa','Ringsted','Nykøbing F','Haslev',
 ];
+
+// By-grupper per landsdel – brugt i dropdown
+const CITY_REGIONS = [
+  { label: 'Storkøbenhavn & Sjælland', cities: [
+    'København','Frederiksberg','Helsingør','Hillerød','Roskilde','Køge',
+    'Næstved','Ringsted','Holbæk','Slagelse','Nykøbing F','Haslev','Lyngby','Glostrup','Hvidovre','Brøndby',
+  ]},
+  { label: 'Fyn', cities: [
+    'Odense','Svendborg','Nyborg','Middelfart','Assens',
+  ]},
+  { label: 'Sydjylland', cities: [
+    'Vejle','Kolding','Esbjerg','Fredericia','Sønderborg','Aabenraa','Haderslev','Ribe',
+  ]},
+  { label: 'Midtjylland', cities: [
+    'Aarhus','Herning','Silkeborg','Viborg','Horsens','Ikast','Holstebro','Skive','Randers',
+  ]},
+  { label: 'Nordjylland', cities: [
+    'Aalborg','Hjørring','Frederikshavn','Thisted','Hobro','Brønderslev',
+  ]},
+  { label: 'Bornholm', cities: ['Rønne'] },
+];
+
+// Alle byer fladt (bruges til match-funktioner)
+const ALL_DANISH_CITIES_FLAT = CITY_REGIONS.flatMap(r => r.cities);
+
+/* ── Foreslår brancher baseret på CV-profilen ───────────────────────────────── */
+function suggestIndustriesFromProfile(profile) {
+  if (!profile) return [];
+  const suggested = new Set();
+
+  const rfMap = {
+    'Frontend':         ['IT/Tech'],
+    'Backend':          ['IT/Tech'],
+    'Mobile':           ['IT/Tech'],
+    'Cloud & DevOps':   ['IT/Tech'],
+    'Data & AI':        ['IT/Tech','Data & AI'],
+    'Design':           ['Design','IT/Tech'],
+    'Produkt & Agile':  ['IT/Tech','Ledelse'],
+    'Marketing':        ['Marketing'],
+    'Forretning':       ['Salg','Finans'],
+    'HR & Rekruttering':['HR'],
+    'Økonomi & Regnskab':['Finans'],
+    'Sundhed & Omsorg': ['Sundhed'],
+    'Produktion & Teknik':['Logistik','Handel'],
+    'Handel & Service': ['Handel','Salg'],
+    'Kommunikation':    ['Marketing'],
+    'Undervisning':     ['Andet'],
+    'Jura & Compliance':['Finans','Andet'],
+    'Administration':   ['Ledelse','Finans'],
+  };
+
+  (rfMap[profile.roleFamily] || []).forEach(i => suggested.add(i));
+
+  // Kig på domains for ekstra hints
+  const domainText = (profile.domains || []).join(' ').toLowerCase();
+  if (/sundhed|medicin|klinisk|patient|pharma/.test(domainText)) suggested.add('Sundhed');
+  if (/finans|bank|investering|revision|regnskab/.test(domainText)) suggested.add('Finans');
+  if (/marketing|branding|kommunikation|pr/.test(domainText)) suggested.add('Marketing');
+  if (/salg|salgsledelse|account/.test(domainText)) suggested.add('Salg');
+  if (/hr|rekruttering|personale/.test(domainText)) suggested.add('HR');
+  if (/logistik|lager|supply chain|transport/.test(domainText)) suggested.add('Logistik');
+  if (/handel|detailhandel|butik|retail/.test(domainText)) suggested.add('Handel');
+  if (/ledelse|management|direktør/.test(domainText)) suggested.add('Ledelse');
+  if (/data|analyse|bi|analytics|machine learning/.test(domainText)) suggested.add('Data & AI');
+  if (/design|ux|ui|grafisk/.test(domainText)) suggested.add('Design');
+
+  // Mindst 1 – fallback til Andet
+  if (suggested.size === 0) suggested.add('Andet');
+
+  return [...suggested].filter(i => PREF_INDUSTRIES.includes(i));
+}
 const PREF_MOBILITY = [
   {val:'same_city',    label:'Kun min by',    sub:'Maks ~30 min transport'},
   {val:'region',       label:'Min region',     sub:'Op til ~1 times transport'},
@@ -1494,29 +1565,24 @@ const PrefRadio = ({selected, onClick, label, sub}) => (
 );
 
 const PreferencesScreen = ({profile, onDone, onReupload}) => {
-  const [workMode,   setWorkMode]   = useState('Ligegyldigt');
-  const [industries, setIndustries] = useState(
-    profile.roleFamily && PREF_INDUSTRIES.includes(profile.roleFamily) ? [profile.roleFamily] : []
-  );
-  const [salary,      setSalary]      = useState(null);
-  const [status,      setStatus]      = useState('aaben');
-  // Nye felter
-  const [city,        setCity]        = useState(profile.location || '');
-  const [cityInput,   setCityInput]   = useState(profile.location || '');
-  const [showCities,  setShowCities]  = useState(false);
+  const suggestedIndustries = suggestIndustriesFromProfile(profile);
+  const [industries, setIndustries] = useState(suggestedIndustries);
+  const [city,        setCity]        = useState(() => {
+    // Auto-match CV location til en dansk by
+    const loc = (profile.location || '').toLowerCase();
+    const match = ALL_DANISH_CITIES_FLAT.find(c => loc.includes(c.toLowerCase()) || c.toLowerCase().includes(loc));
+    return match || '';
+  });
   const [mobility,    setMobility]    = useState('same_city');
   const [contractType,setContractType]= useState('all');
 
   const toggleIndustry = ind =>
     setIndustries(prev => prev.includes(ind) ? prev.filter(x=>x!==ind) : [...prev, ind]);
 
-  const cityMatches = DANISH_CITIES.filter(c =>
-    cityInput.length > 0 && c.toLowerCase().includes(cityInput.toLowerCase()) && c !== cityInput
-  ).slice(0, 5);
-
   const handleDone = () => onDone({
-    industries, status,
-    location: city || cityInput,
+    industries,
+    status: 'aaben',
+    location: city,
     mobility,
     contractType,
   });
@@ -1541,34 +1607,28 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
         <div style={{marginBottom:32, textAlign:'center'}}>
           <div style={{width:44,height:44,background:'var(--green-bg)',border:'1px solid var(--green-bd)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',fontSize:20}}>✓</div>
           <h1 style={{fontSize:26,fontWeight:400,letterSpacing:'-.02em',marginBottom:6,fontFamily:'Newsreader,Georgia,serif'}}>Profil klar!</h1>
-          <p style={{color:'var(--muted)',fontSize:14,lineHeight:1.6}}>4 hurtige spørgsmål — vi bruger svarene til at beregne præcise match-scores.</p>
+          <p style={{color:'var(--muted)',fontSize:14,lineHeight:1.6}}>3 hurtige spørgsmål — vi bruger svarene til at beregne præcise match-scores.</p>
         </div>
 
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
 
           {/* Q1: Lokation */}
-          <div style={{background:'var(--surface-low)',padding:'18px 20px',position:'relative'}}>
+          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
             <SectionLabel n="1">Hvor er du baseret?</SectionLabel>
-            <div style={{position:'relative',marginBottom:12}}>
-              <input value={cityInput} onChange={e=>{setCityInput(e.target.value);setCity('');setShowCities(true)}}
-                onBlur={()=>setTimeout(()=>setShowCities(false),150)}
-                onFocus={()=>setShowCities(true)}
-                placeholder="Skriv din by, fx København..."
-                style={{width:'100%',padding:'9px 12px',border:'1px solid var(--border2)',fontSize:13,background:'var(--bg)',boxSizing:'border-box',outline:'none'}}
-              />
-              {showCities && cityMatches.length > 0 && (
-                <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--bg)',border:'1px solid var(--border2)',borderTop:'none',zIndex:10}}>
-                  {cityMatches.map(c=>(
-                    <div key={c} onMouseDown={()=>{setCity(c);setCityInput(c);setShowCities(false)}}
-                      style={{padding:'8px 12px',fontSize:13,cursor:'pointer',borderBottom:'1px solid var(--border)'}}
-                      onMouseEnter={e=>e.target.style.background='var(--surface-low)'}
-                      onMouseLeave={e=>e.target.style.background='transparent'}>
-                      {c}
-                    </div>
+            <select
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              style={{width:'100%',padding:'9px 12px',border:'1px solid var(--border2)',fontSize:13,background:'var(--bg)',boxSizing:'border-box',outline:'none',color: city ? 'var(--text)' : 'var(--muted)',marginBottom:14,appearance:'auto'}}
+            >
+              <option value="">Vælg din by...</option>
+              {CITY_REGIONS.map(region => (
+                <optgroup key={region.label} label={region.label}>
+                  {region.cities.map(c => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
-                </div>
-              )}
-            </div>
+                </optgroup>
+              ))}
+            </select>
             <div style={{fontSize:12,color:'var(--muted)',fontWeight:500,marginBottom:10}}>Mobilitet</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
               {PREF_MOBILITY.map(({val,label,sub})=>(
@@ -1592,22 +1652,17 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
           {/* Q3: Brancher */}
           <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
             <SectionLabel n="3">Hvilke brancher interesserer dig?</SectionLabel>
-            <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Vælg gerne flere</div>
+            {suggestedIndustries.length > 0 && (
+              <div style={{fontSize:12,color:'var(--muted)',marginBottom:10,display:'flex',alignItems:'center',gap:5}}>
+                <span style={{color:'var(--green)',fontWeight:600}}>✓</span>
+                Foreslået fra dit CV — tilpas efter behov
+              </div>
+            )}
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {PREF_INDUSTRIES.map(ind=>(
                 <PrefChip key={ind} selected={industries.includes(ind)} onClick={()=>toggleIndustry(ind)}>
                   {ind}
                 </PrefChip>
-              ))}
-            </div>
-          </div>
-
-          {/* Q4: Status */}
-          <div style={{background:'var(--surface-low)',padding:'18px 20px'}}>
-            <SectionLabel n="4">Hvor aktivt søger du?</SectionLabel>
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {PREF_STATUS.map(({val,label,sub})=>(
-                <PrefRadio key={val} selected={status===val} onClick={()=>setStatus(val)} label={label} sub={sub}/>
               ))}
             </div>
           </div>
