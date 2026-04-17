@@ -345,6 +345,7 @@ Returnér KUN gyldig JSON.
     {"name": "Rapportering", "cat": "Data & AI", "confidence": 85, "inferred": true, "hits": 3},
     {"name": "Finansielle systemer", "cat": "Økonomi & Regnskab", "confidence": 75, "inferred": true, "hits": 2}
   ],
+  "name": "Alexander Kougios",
   "roleFamily": "Data & AI",
   "seniority": "Junior",
   "years": 2,

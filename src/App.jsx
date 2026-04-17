@@ -1834,183 +1834,231 @@ function rebuildProfile(base, newSkills) {
   };
 }
 
+/* ── Kategori-farver til skill-kort ─────────────────────────────────────── */
+const CAT_COLORS = {
+  'Data & AI':        '#1a4a7a',
+  'Frontend':         '#2d6a4f',
+  'Backend':          '#1b4332',
+  'Cloud & DevOps':   '#264653',
+  'Mobile':           '#2c3e50',
+  'Design':           '#6d3b47',
+  'Produkt & Agile':  '#7b4f12',
+  'Marketing':        '#4a1942',
+  'Forretning':       '#1c3a4a',
+  'Bløde':            '#3d405b',
+  'Økonomi & Regnskab':'#3b4a2f',
+  'Øvrige IT':        '#2e4057',
+  'HR & Rekruttering':'#4a2c2a',
+  'Jura & Compliance':'#2d3142',
+  'Kommunikation':    '#5c4033',
+  'Administration':   '#3a3a3a',
+  'Handel & Service': '#4a3728',
+  'Produktion & Teknik':'#2a3d2e',
+  'Undervisning':     '#4a3010',
+  'Sundhed & Omsorg': '#2a4a3a',
+};
+
 /* ═══════════════════════ PROFILE SCREEN ════════════════════════════════════ */
-const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile }) => {
-  const [editMode, setEditMode] = useState(false);
-  const [addInput, setAddInput]  = useState('');
-  const [addCat, setAddCat]      = useState('Forretning');
-
+const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile, user }) => {
   const topCats = Object.entries(profile.skillsByCategory)
-    .sort((a,b)=>b[1].length - a[1].length)
-    .slice(0,6);
+    .sort((a,b)=>b[1].length - a[1].length);
 
-  const removeSkill = (skillName) => {
-    const newSkills = profile.skills.filter(s => s.name !== skillName);
-    onUpdateProfile(rebuildProfile(profile, newSkills));
-  };
-
-  const addSkill = () => {
-    const name = addInput.trim();
-    if (!name || profile.skills.find(s => s.name.toLowerCase() === name.toLowerCase())) {
-      setAddInput(''); return;
-    }
-    const newSkill = { name, cat: addCat, confidence: 90, inferred: false, hits: 1 };
-    const newSkills = [newSkill, ...profile.skills];
-    onUpdateProfile(rebuildProfile(profile, newSkills));
-    setAddInput('');
-  };
+  // Navn: fra profil (AI-ekstraheret) → Supabase user → fallback
+  const displayName = profile.name || profile.candidateName
+    || (user?.user_metadata?.full_name)
+    || (user?.email?.split('@')[0]?.replace(/[._]/g,' ')?.replace(/\b\w/g,c=>c.toUpperCase()))
+    || '';
+  const initials = displayName
+    ? displayName.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')
+    : '?';
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg)'}}>
+    <div style={{minHeight:'100vh',background:'#f4f2ee'}}>
       {/* Nav */}
-      <div style={{background:'rgba(251,249,244,0.92)',borderBottom:'1px solid var(--border)',backdropFilter:'blur(8px)',padding:'0 24px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style={{background:'rgba(251,249,244,0.95)',borderBottom:'1px solid var(--border)',backdropFilter:'blur(10px)',padding:'0 24px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:10}}>
         <Logo/>
         <div style={{display:'flex',gap:8}}>
-          <button onClick={onReupload} style={{fontSize:13,color:'var(--muted)',padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5}}>
+          <button onClick={onReupload} style={{fontSize:13,color:'var(--muted)',padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5,background:'transparent'}}>
             <Ic n="upload" s={13}/>Skift CV
           </button>
-          <button onClick={()=>setEditMode(e=>!e)} style={{fontSize:13,padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5,
-            background: editMode ? 'var(--navy)' : 'transparent',
-            color: editMode ? '#fff' : 'var(--muted)'}}>
-            <Ic n="edit" s={13}/>{editMode ? 'Færdig' : 'Rediger'}
-          </button>
-          <button onClick={onContinue} style={{fontSize:12,fontWeight:700,padding:'7px 18px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',display:'flex',alignItems:'center',gap:5,letterSpacing:'.02em'}}>
+          <button onClick={onContinue} style={{fontSize:12,fontWeight:700,padding:'7px 18px',background:'linear-gradient(135deg,#0f2a4a,#1a5276)',color:'#fff',display:'flex',alignItems:'center',gap:5,letterSpacing:'.03em',boxShadow:'0 2px 8px rgba(15,42,74,0.25)'}}>
             Se job-matches<Ic n="arrow" s={13}/>
           </button>
         </div>
       </div>
 
-      <div style={{maxWidth:860,margin:'0 auto',padding:'32px 24px'}}>
-        {/* Header */}
-        <div style={{marginBottom:28}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>DIN PROFIL – BYGGET FRA CV</div>
-            {profile.aiAnalyzed
-              ? <span style={{fontSize:10,fontWeight:700,letterSpacing:'.04em',padding:'2px 8px',background:'linear-gradient(90deg,#0f2a4a,#1a4a7a)',color:'#fff',display:'flex',alignItems:'center',gap:4}}>
-                  <span>✦</span> AI-ANALYSERET
-                </span>
-              : <span style={{fontSize:10,color:'var(--faint)',letterSpacing:'.03em'}}>REGELBASERET</span>
-            }
-          </div>
-          <h1 style={{fontSize:28,fontWeight:400,letterSpacing:'-.02em',fontFamily:'Newsreader,Georgia,serif'}}>{profile.roleFamily}</h1>
-          <div style={{display:'flex',alignItems:'center',gap:12,marginTop:8,flexWrap:'wrap'}}>
-            <span style={{fontSize:13,padding:'3px 10px',background:'var(--accent-bg)',color:'var(--navy)',fontWeight:500,border:'none'}}>{profile.seniority}</span>
-            {profile.years && <span style={{fontSize:13,color:'var(--muted)'}}>{profile.years}+ års erfaring</span>}
-            {profile.education && <span style={{fontSize:13,color:'var(--muted)'}}>{profile.education}</span>}
-            {profile.languages?.length > 0 && <span style={{fontSize:13,color:'var(--muted)'}}>{profile.languages.join(', ')}</span>}
-            {profile.aiModel && <span style={{fontSize:11,color:'var(--faint)'}}>via {profile.aiModel}</span>}
-            <span style={{fontSize:12,color:'var(--faint)',display:'flex',alignItems:'center',gap:3}}><Ic n="file" s={12}/>{profile.fileName}</span>
-          </div>
-        </div>
+      <div style={{maxWidth:900,margin:'0 auto',padding:'32px 24px 64px'}}>
 
-        {/* Stats row */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:24}}>
-          {[
-            {label:'Kompetencer fundet', val:profile.totalSkills},
-            {label:'Direkte nøgleord', val:profile.explicitCount??profile.totalSkills},
-            {label:'Udledt fra kontekst', val:profile.inferredCount??0},
-            {label:'Fagkategorier', val:Object.keys(profile.skillsByCategory).length},
-          ].map(({label,val})=>(
-            <div key={label} style={{background:'var(--surface-low)',padding:'14px 16px'}}>
-              <div style={{fontSize:22,fontWeight:800,color:'var(--navy)',fontFamily:'Newsreader,Georgia,serif'}}>{val}</div>
-              <div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>{label}</div>
+        {/* ── HERO KORT ────────────────────────────────────────────────────── */}
+        <div style={{
+          background:'linear-gradient(135deg,#0f2a4a 0%,#1a4a7a 60%,#1c5fa0 100%)',
+          borderRadius:0,padding:'36px 40px',marginBottom:24,
+          position:'relative',overflow:'hidden',
+        }}>
+          {/* Dekorativ cirkel */}
+          <div style={{position:'absolute',right:-60,top:-60,width:280,height:280,borderRadius:'50%',background:'rgba(255,255,255,0.04)',pointerEvents:'none'}}/>
+          <div style={{position:'absolute',right:80,bottom:-80,width:180,height:180,borderRadius:'50%',background:'rgba(255,255,255,0.03)',pointerEvents:'none'}}/>
+
+          <div style={{display:'flex',alignItems:'flex-start',gap:20,position:'relative'}}>
+            {/* Avatar */}
+            <div style={{
+              width:64,height:64,borderRadius:'50%',flexShrink:0,
+              background:'rgba(255,255,255,0.15)',
+              border:'2px solid rgba(255,255,255,0.25)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'.02em',
+              fontFamily:'Manrope,sans-serif',
+            }}>
+              {initials}
             </div>
-          ))}
-        </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:16}}>
-          {/* Skills by category */}
-          <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            <div style={{background:'var(--surface-low)',padding:'16px 18px'}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:14}}>KOMPETENCER EFTER KATEGORI</div>
-              {topCats.map(([cat,skills])=>(
-                <div key={cat} style={{marginBottom:14}}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                    <span style={{fontSize:13,fontWeight:500}}>{cat}</span>
-                    <span style={{fontSize:12,color:'var(--muted)'}}>{skills.length} kompetencer</span>
-                  </div>
-                  <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                    {(editMode ? skills : skills.slice(0,10)).map(s=>(
-                      <div key={s.name} style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-                        <span title={s.inferred ? `Udledt fra kontekst (${s.confidence}% sikkerhed)` : `Direkte match (${s.confidence}% sikkerhed)`} style={{
-                          display:'inline-flex',alignItems:'center',gap:4,fontSize:12,
-                          padding: editMode ? '3px 6px 3px 9px' : '3px 9px',
-                          background: s.inferred
-                            ? (s.confidence>=75 ? '#f0f4f8' : 'var(--surface-high)')
-                            : (s.confidence>=80 ? 'var(--accent-bg)' : s.confidence>=50 ? 'var(--surface-low)' : 'var(--surface-high)'),
-                          border: s.inferred ? '1px dashed rgba(0,33,71,0.25)' : (editMode ? '1px solid var(--border2)' : 'none'),
-                          color: s.inferred
-                            ? (s.confidence>=75 ? '#3a5a80' : 'var(--muted)')
-                            : (s.confidence>=80 ? 'var(--navy)' : 'var(--muted)'),
-                          fontWeight: (!s.inferred && s.confidence>=80) ? 500 : 400,
-                        }}>
-                          {s.inferred && <span style={{fontSize:9,opacity:.7}}>✦</span>}
-                          {s.name}
-                          {editMode && (
-                            <button onClick={()=>removeSkill(s.name)} style={{
-                              marginLeft:4,padding:'0 2px',border:'none',background:'none',
-                              cursor:'pointer',color:'var(--faint)',display:'inline-flex',
-                              alignItems:'center',lineHeight:1,
-                            }} title="Fjern kompetence">
-                              <Ic n="x" s={11}/>
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                    {!editMode && skills.length > 10 && <span style={{fontSize:12,color:'var(--faint)',alignSelf:'center'}}>+{skills.length-10}</span>}
-                  </div>
+            <div style={{flex:1,minWidth:0}}>
+              {/* AI-badge */}
+              {profile.aiAnalyzed && (
+                <div style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'rgba(255,255,255,0.6)',marginBottom:8,textTransform:'uppercase'}}>
+                  <span style={{fontSize:8}}>✦</span> AI-ANALYSERET
+                </div>
+              )}
+              {/* Navn */}
+              {displayName && (
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',fontWeight:500,marginBottom:4,letterSpacing:'.01em'}}>
+                  {displayName}
+                </div>
+              )}
+              {/* Rolle */}
+              <h1 style={{fontSize:30,fontWeight:400,letterSpacing:'-.02em',fontFamily:'Newsreader,Georgia,serif',color:'#fff',margin:0,lineHeight:1.15}}>
+                {profile.roleFamily}
+              </h1>
+              {/* Meta-tags */}
+              <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:14}}>
+                {profile.seniority && (
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontWeight:500,borderRadius:2,border:'1px solid rgba(255,255,255,0.15)'}}>
+                    {profile.seniority}
+                  </span>
+                )}
+                {profile.years > 0 && (
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                    {profile.years}+ års erfaring
+                  </span>
+                )}
+                {profile.education && (
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                    {profile.education}
+                  </span>
+                )}
+                {profile.location && (
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                    📍 {profile.location}
+                  </span>
+                )}
+                {profile.languages?.length > 0 && (
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                    {profile.languages.join(' · ')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Stats-kolonner */}
+            <div style={{display:'flex',gap:24,flexShrink:0,alignSelf:'center'}}>
+              {[
+                {n: profile.totalSkills, l:'kompetencer'},
+                {n: Object.keys(profile.skillsByCategory).length, l:'kategorier'},
+                {n: profile.roles?.length||0, l:'stillinger'},
+              ].map(({n,l})=>(
+                <div key={l} style={{textAlign:'center'}}>
+                  <div style={{fontSize:28,fontWeight:700,color:'#fff',fontFamily:'Newsreader,Georgia,serif',lineHeight:1}}>{n}</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',marginTop:3,letterSpacing:'.03em'}}>{l}</div>
                 </div>
               ))}
-              {/* Tilføj kompetence — kun i edit-mode */}
-              {editMode && (
-                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
-                  <div style={{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:'var(--muted)',textTransform:'uppercase',marginBottom:8}}>TILFØJ KOMPETENCE</div>
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                    <input
-                      value={addInput}
-                      onChange={e=>setAddInput(e.target.value)}
-                      onKeyDown={e=>e.key==='Enter'&&addSkill()}
-                      placeholder="fx strategi, python, projektledelse..."
-                      style={{flex:'1 1 180px',padding:'7px 10px',border:'1px solid var(--border2)',fontSize:13,outline:'none',background:'var(--bg)',minWidth:0}}
-                    />
-                    <select value={addCat} onChange={e=>setAddCat(e.target.value)}
-                      style={{padding:'7px 8px',border:'1px solid var(--border2)',fontSize:12,background:'var(--bg)',outline:'none',color:'var(--text)',flexShrink:0}}>
-                      {Object.keys(SKILL_GROUPS).map(c=><option key={c}>{c}</option>)}
-                      <option>Forretning</option>
-                      <option>Bløde</option>
-                    </select>
-                    <button onClick={addSkill} style={{padding:'7px 14px',background:'var(--navy)',color:'#fff',border:'none',fontSize:13,fontWeight:600,cursor:'pointer',flexShrink:0}}>
-                      + Tilføj
-                    </button>
-                  </div>
-                  <div style={{fontSize:11,color:'var(--faint)',marginTop:6}}>Tryk Enter eller klik Tilføj · Nye kompetencer påvirker job-matching med det samme</div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          {profile.summary && (
+            <div style={{marginTop:20,paddingTop:16,borderTop:'1px solid rgba(255,255,255,0.1)',fontSize:13,color:'rgba(255,255,255,0.65)',fontStyle:'italic',lineHeight:1.55,maxWidth:600}}>
+              "{profile.summary}"
+            </div>
+          )}
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:16,alignItems:'start'}}>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+            {/* ── STYRKER ─────────────────────────────────────────────────── */}
+            {profile.strengths?.length > 0 && (
+              <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>STYRKER</div>
+                <div style={{display:'flex',flexDirection:'column',gap:9}}>
+                  {profile.strengths.map((s,i)=>(
+                    <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                      <div style={{width:18,height:18,background:'var(--green-bg)',border:'1px solid var(--green-bd)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:1}}>
+                        <Ic n="check" s={10}/>
+                      </div>
+                      <span style={{fontSize:13,color:'var(--text)',lineHeight:1.5}}>{s}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {/* Legend */}
-              {!editMode && profile.inferredCount > 0 && (
-                <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--border)',display:'flex',gap:16,flexWrap:'wrap'}}>
-                  <span style={{fontSize:11,color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 6px',border:'none',background:'var(--accent-bg)',color:'var(--navy)',fontSize:11}}>●</span>
-                    Direkte nøgleord fra CV
+              </div>
+            )}
+
+            {/* ── KOMPETENCER ──────────────────────────────────────────────── */}
+            <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:16,fontFamily:'Manrope,sans-serif'}}>KOMPETENCER EFTER KATEGORI</div>
+              <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                {topCats.map(([cat,skills])=>{
+                  const accent = CAT_COLORS[cat] || '#2d3142';
+                  return (
+                    <div key={cat} style={{borderLeft:`3px solid ${accent}`,paddingLeft:14}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                        <span style={{fontSize:12,fontWeight:700,color:accent,letterSpacing:'.02em'}}>{cat}</span>
+                        <span style={{fontSize:11,color:'var(--faint)'}}>{skills.length}</span>
+                      </div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                        {skills.map(s=>(
+                          <span key={s.name} title={s.inferred?`Udledt (${s.confidence}%):`:`Direkte (${s.confidence}%)`} style={{
+                            display:'inline-flex',alignItems:'center',gap:3,
+                            fontSize:12,padding:'3px 9px',
+                            background: s.inferred ? 'transparent' : `${accent}12`,
+                            border: s.inferred ? '1px dashed rgba(0,0,0,0.13)' : `1px solid ${accent}28`,
+                            color: s.inferred ? 'var(--muted)' : accent,
+                            fontWeight: s.inferred ? 400 : 500,
+                          }}>
+                            {s.inferred && <span style={{fontSize:8,opacity:.6}}>✦</span>}
+                            {s.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {profile.inferredCount > 0 && (
+                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:14,flexWrap:'wrap'}}>
+                  <span style={{fontSize:11,color:'var(--faint)',display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{display:'inline-block',width:10,height:10,background:'rgba(26,74,122,0.12)',border:'1px solid rgba(26,74,122,0.25)'}}/>
+                    Direkte fra CV
                   </span>
-                  <span style={{fontSize:11,color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{display:'inline-flex',alignItems:'center',gap:3,padding:'1px 6px',border:'1px dashed rgba(0,33,71,0.25)',background:'#f0f4f8',color:'#3a5a80',fontSize:11}}>✦</span>
-                    Udledt mellem linjerne
+                  <span style={{fontSize:11,color:'var(--faint)',display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{display:'inline-block',width:10,height:10,border:'1px dashed rgba(0,0,0,0.2)',background:'transparent'}}/>
+                    ✦ Udledt fra kontekst
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Experience */}
-            {profile.roles.length > 0 && (
-              <div style={{background:'var(--surface-low)',padding:'16px 18px'}}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:14}}>DETEKTEREDE STILLINGER</div>
-                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {/* ── ERFARING ─────────────────────────────────────────────────── */}
+            {profile.roles?.length > 0 && (
+              <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>DETEKTEREDE STILLINGER</div>
+                <div style={{display:'flex',flexDirection:'column',gap:0}}>
                   {profile.roles.map((r,i)=>(
-                    <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<profile.roles.length-1?'1px solid var(--border)':'none'}}>
-                      <span style={{fontSize:13,fontWeight:i===0?500:400}}>{r.title}</span>
-                      {r.years && <span style={{fontSize:12,color:'var(--muted)'}}>{r.years}</span>}
+                    <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:i<profile.roles.length-1?'1px solid var(--border)':'none'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div style={{width:6,height:6,background:i===0?'var(--navy)':'var(--border2)',borderRadius:'50%',flexShrink:0}}/>
+                        <span style={{fontSize:13,fontWeight:i===0?600:400,color:i===0?'var(--navy)':'var(--text)'}}>{r.title}</span>
+                      </div>
+                      {r.years && <span style={{fontSize:12,color:'var(--faint)'}}>{r.years}</span>}
                     </div>
                   ))}
                 </div>
@@ -2018,48 +2066,73 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile 
             )}
           </div>
 
-          {/* Sidebar: strengths + top skills */}
-          <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            {/* Strengths */}
-            {profile.strengths.length > 0 && (
-              <div style={{background:'var(--surface-low)',padding:'14px 16px'}}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:12}}>STYRKER IDENTIFICERET</div>
-                <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                  {profile.strengths.map((s,i)=>(
-                    <div key={i} style={{display:'flex',gap:8,fontSize:13}}>
-                      <span style={{color:'var(--green)',flexShrink:0,marginTop:1}}><Ic n="check" s={13}/></span>
-                      <span style={{color:'var(--text)',lineHeight:1.45}}>{s}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* ── SIDEBAR ───────────────────────────────────────────────────── */}
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
 
-            {/* Top keywords */}
-            <div style={{background:'var(--surface-low)',padding:'14px 16px'}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:12}}>TOP NØGLEORD FRA CV</div>
+            {/* Top nøgleord */}
+            <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>TOP NØGLEORD</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                {profile.keywords.slice(0,16).map((k,i)=>(
-                  <span key={k} style={{fontSize:12,padding:'3px 8px',background:i<5?'var(--accent-bg)':'var(--bg)',border:'none',color:i<5?'var(--navy)':'var(--muted)',fontWeight:i<5?500:400}}>
+                {profile.keywords.slice(0,18).map((k,i)=>(
+                  <span key={k} style={{
+                    fontSize:12,padding:'3px 8px',
+                    background: i<6 ? '#0f2a4a' : i<12 ? '#e8edf2' : '#f4f2ee',
+                    color: i<6 ? '#fff' : i<12 ? '#1a4a7a' : 'var(--muted)',
+                    fontWeight: i<6 ? 600 : 400,
+                  }}>
                     {k}
                   </span>
                 ))}
               </div>
             </div>
 
+            {/* Adjacent roller */}
+            {profile.adjacent_roles?.length > 0 && (
+              <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>REALISTISKE JOBTYPER</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {profile.adjacent_roles.slice(0,6).map((r,i)=>(
+                    <div key={r} style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:i<3?'var(--navy)':'var(--muted)',fontWeight:i<3?500:400}}>
+                      <span style={{fontSize:10,color:'var(--faint)'}}>→</span>{r}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Wildcard roller */}
+            {profile.wildcard_roles?.length > 0 && (
+              <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)',borderLeft:'3px solid var(--amber)'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--amber)',textTransform:'uppercase',marginBottom:10,fontFamily:'Manrope,sans-serif'}}>✦ OVERRASK DIG SELV</div>
+                <div style={{fontSize:12,color:'var(--muted)',marginBottom:10,lineHeight:1.4}}>{profile.discovery_reasoning?.split('.')[0]||'Uventede roller der passer til din profil'}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                  {profile.wildcard_roles.slice(0,5).map(r=>(
+                    <span key={r} style={{fontSize:12,padding:'3px 9px',background:'#fffbf0',border:'1px solid rgba(180,130,30,0.25)',color:'#7b5e10',fontWeight:500}}>{r}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* CTA */}
-            <button onClick={onContinue}
-              style={{padding:'13px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',fontWeight:700,fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',gap:6,letterSpacing:'.02em'}}>
+            <button onClick={onContinue} style={{
+              padding:'14px',
+              background:'linear-gradient(135deg,#0f2a4a,#1a5276)',
+              color:'#fff',fontWeight:700,fontSize:14,
+              display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+              letterSpacing:'.03em',boxShadow:'0 4px 12px rgba(15,42,74,0.3)',
+              border:'none',cursor:'pointer',
+            }}>
               Se dine job-matches<Ic n="arrow" s={14}/>
             </button>
-            <p style={{fontSize:11,color:'var(--faint)',textAlign:'center',lineHeight:1.5}}>
-              {jobs?.length > 0 ? `${jobs.length} job scores nu mod din præcise profil` : 'Job hentes automatisk i baggrunden'}
+            <p style={{fontSize:11,color:'var(--faint)',textAlign:'center',lineHeight:1.5,margin:0}}>
+              {jobs?.length > 0 ? `${jobs.length} jobs matches mod din profil` : 'Jobs hentes i baggrunden'}
             </p>
           </div>
         </div>
       </div>
     </div>
   );
+
 };
 
 /* ═══════════════════════ PREFERENCES SCREEN ════════════════════════════════ */
@@ -3469,7 +3542,7 @@ const App = () => {
   if (screen==='landing') return <Landing onUpload={handleFileFromLanding} onSkip={()=>setScreen('jobs')}/>;
   if (screen==='upload')  return <UploadScreen initialFile={pendingFile} onProfile={handleProfile}/>;
   if (screen==='prefs')   return <PreferencesScreen profile={profile} onDone={handlePrefs} onReupload={handleReupload}/>;
-  if (screen==='profile') return <ProfileScreen profile={profile} jobs={jobsData} onContinue={()=>setScreen('jobs')} onReupload={handleReupload} onUpdateProfile={setProfile}/>;
+  if (screen==='profile') return <ProfileScreen profile={profile} jobs={jobsData} onContinue={()=>setScreen('jobs')} onReupload={handleReupload} onUpdateProfile={setProfile} user={user}/>;
   return <JobsScreen profile={profile} prefs={prefs} jobs={jobsData} jobsLoaded={jobsLoaded} jobsLoading={jobsLoading} jobsTotal={jobsTotal} onRefresh={refreshJobs} onReupload={handleReupload} onLogout={handleLogout} user={user}/>;
 };
 
