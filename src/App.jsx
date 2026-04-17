@@ -24,8 +24,9 @@ const SKILL_GROUPS = {
   "Design":       ["figma","sketch","adobe xd","photoshop","illustrator","after effects","ux design","ui design","design systems","prototyping","user research","usability testing","accessibility","wireframing","a/b testing"],
   "Produkt & Agile":["product management","scrum","agile","kanban","safe","okr","kpi","jira","confluence","roadmap","product strategy","user stories","stakeholder management","product owner"],
   "Marketing":    ["seo","sem","google ads","facebook ads","content marketing","email marketing","hubspot","salesforce","crm","google analytics","growth hacking","b2b marketing","demand generation","copywriting"],
-  "Forretning":   ["forretningsudvikling","projektledelse","budgettering","finansiel analyse","excel","powerpoint","sql","strategi","konsulentvirksomhed","change management","b2b","saas"],
-  "Bløde":        ["kommunikation","ledelse","teamledelse","præsentation","forhandling","samarbejde","problemløsning","analytisk","selvstændig","kreativ"],
+  "Forretning":   ["forretningsudvikling","projektledelse","budgettering","finansiel analyse","excel","powerpoint","sql","strategi","konsulentvirksomhed","change management","b2b","saas","vba","process optimization","digital transformation","governance","stakeholder management"],
+  "Bløde":        ["kommunikation","ledelse","teamledelse","præsentation","forhandling","samarbejde","problemløsning","analytisk","selvstændig","kreativ","microsoft teams","ms teams"],
+  "Øvrige IT":    ["vba","database architecture","database design","data modeling","microsoft 365","office 365","sharepoint","power automate","power apps","microsoft teams","visio","ms project","it-arkitektur","enterprise architecture"],
   // ── Udvidede danske fagkategorier ────────────────────────────────────────────
   "Handel & Service":  ["kundeservice","detailhandel","butiksbetjening","kassebetjening","salgsassistent","varemodtagelse","merchandising","lagerstyring","inventory","butiksdrift","kasseoptælling","salgsteknik"],
   "Produktion & Teknik":["vedligehold","montage","maskinbetjening","produktion","kvalitetskontrol","cnc","gaffeltruck","truck","lager","logistik","pakkemedarbejder","forsyningskæde","lean","5s","iso","el-installation","vvs","tømrer","maler","murer","mekaniker","reparation","teknisk service","eventopsætning","eventudstyr","stageopsætning","rigger"],
@@ -40,6 +41,42 @@ const SKILL_GROUPS = {
 
 /* ── Semantiske synonymer: jobopslag bruger disse ord → matcher disse skills ── */
 const SKILL_SYNONYMS = {
+  // Engelske AI/Data-termer (hyppige i danske tech-jobopslag)
+  'data science':         ['python','sql','machine learning','data modeling','analytisk','pandas'],
+  'analytics':            ['sql','power bi','tableau','analytisk','data modeling'],
+  'business intelligence':['power bi','tableau','sql','analytisk','data modeling'],
+  'machine learning':     ['machine learning','python','scikit-learn','tensorflow'],
+  'artificial intelligence':['machine learning','python','llm','tensorflow'],
+  'ai solutions':         ['machine learning','python','llm'],
+  'ai-løsninger':         ['machine learning','python','llm'],
+  'rag':                  ['machine learning','llm','python'],
+  'copilot':              ['llm','machine learning','python'],
+  'dashboards':           ['power bi','tableau','looker','analytisk'],
+  'insights':             ['analytisk','power bi','sql','data modeling'],
+  'indsigter':            ['analytisk','power bi','sql'],
+  'decision making':      ['analytisk','sql','power bi'],
+  'beslutningstagere':    ['analytisk','stakeholder management','kommunikation'],
+  'data-driven':          ['analytisk','sql','power bi','python'],
+  'datadrevet':           ['analytisk','sql','power bi','python'],
+  'reporting':            ['power bi','tableau','sql','excel','analytisk'],
+  'rapportering':         ['power bi','sql','excel','analytisk'],
+  'automation':           ['python','vba','power automate'],
+  'automatisering':       ['python','vba','power automate'],
+  'digital transformation':['projektledelse','change management','strategi','it-arkitektur'],
+  'digitalisering':       ['projektledelse','change management','strategi'],
+  'process optimization': ['projektledelse','analytisk','lean'],
+  'procesoptimering':     ['projektledelse','analytisk','lean'],
+  'it strategy':          ['it-arkitektur','strategi','projektledelse'],
+  'it-strategi':          ['it-arkitektur','strategi','projektledelse'],
+  'enterprise':           ['enterprise architecture','it-arkitektur','strategi'],
+  'stakeholders':         ['stakeholder management','kommunikation','projektledelse'],
+  'product teams':        ['scrum','agile','product management','samarbejde'],
+  'cross-functional':     ['samarbejde','projektledelse','stakeholder management'],
+  'governance':           ['governance','compliance','risikostyring'],
+  'aml':                  ['compliance','governance','risikostyring'],
+  'compliance':           ['compliance','governance','risikostyring'],
+  'financial systems':    ['excel','sql','regnskab','analytisk'],
+  'asset management':     ['excel','sql','analytisk','finansiel analyse'],
   // Tech → skills
   'programmering':        ['python','javascript','java','c#','golang'],
   'kodning':              ['python','javascript','java'],
@@ -1798,6 +1835,62 @@ const JobDetail = ({job,match,saved,onSave,applied,onApply,profile}) => {
   const [edit,setEdit]=useState(false);
   const [copied,setCopied]=useState(false);
 
+  // ── On-demand AI job-analyse ───────────────────────────────────────────────
+  const [aiJobMatch, setAiJobMatch] = useState(null);
+  const [aiJobLoading, setAiJobLoading] = useState(false);
+
+  useEffect(() => {
+    if (!job?.description || !profile) return;
+    setAiJobMatch(null);
+    setAiJobLoading(true);
+
+    fetch(`${API_BASE}/api/analyze-job`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({title: job.title, description: job.description}),
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || data.error) { setAiJobLoading(false); return; }
+
+      const required   = (data.required_skills || []).map(s => s.toLowerCase());
+      const niceToHave = (data.nice_to_have    || []).map(s => s.toLowerCase());
+      const cvNames    = new Set(profile.skills.map(s => s.name.toLowerCase()));
+
+      // Direkte match
+      const matched = required.filter(s => cvNames.has(s));
+      // Synonym-match: required_skill → synonym → cv skill
+      const synonymMatched = [];
+      required.forEach(req => {
+        if (matched.includes(req)) return;
+        for (const [phrase, mappedSkills] of Object.entries(SKILL_SYNONYMS)) {
+          if (req.includes(phrase) || phrase.includes(req)) {
+            const hit = mappedSkills.find(ms => cvNames.has(ms));
+            if (hit && !synonymMatched.includes(req)) { synonymMatched.push(req); break; }
+          }
+        }
+      });
+
+      const allMatched = [...matched, ...synonymMatched];
+      const gaps = required.filter(s => !allMatched.includes(s)).slice(0, 6);
+      const coverageScore = required.length > 0
+        ? Math.min(Math.round((allMatched.length / required.length) * 100), 100)
+        : null;
+
+      setAiJobMatch({
+        matched: allMatched,
+        synonymMatched,
+        gaps,
+        coverageScore,
+        niceToHaveMissing: niceToHave.filter(s => !cvNames.has(s)).slice(0,3),
+        keyRequirements: data.key_requirements || [],
+        totalRequired: required.length,
+      });
+      setAiJobLoading(false);
+    })
+    .catch(() => setAiJobLoading(false));
+  }, [job?.id]);
+
   const generate = useCallback(() => {
     setAppState('gen'); setEdit(false);
     const topSkills = match?.matched?.slice(0,3).join(', ') || profile?.keywords?.slice(0,3).join(', ') || 'relevante kompetencer';
@@ -1871,19 +1964,35 @@ Med venlig hilsen
         {/* Match breakdown */}
         {match && (
           <div style={{background:'var(--surface-low)',padding:14,marginBottom:16}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:12}}>MATCH-ANALYSE</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>MATCH-ANALYSE</div>
+              {aiJobLoading && (
+                <span style={{fontSize:10,color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+                  <span style={{display:'inline-block',width:8,height:8,border:'1.5px solid var(--navy)',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+                  AI analyserer job…
+                </span>
+              )}
+              {aiJobMatch && (
+                <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',background:'linear-gradient(90deg,#0f2a4a,#1a4a7a)',color:'#fff',letterSpacing:'.04em'}}>
+                  ✦ AI-analyseret
+                </span>
+              )}
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               {[
-                {l:'Skills',         v:match.coverageScore  ?? match.skillScore},
-                {l:'Rolle',          v:match.titleScore     ?? match.roleScore},
-                {l:'Lokation',       v:match.locationScore},
-                {l:'Erfaringsniveau',v:match.senScore},
-                {l:'Sprog',          v:match.languageScore},
-                {l:'Uddannelse',     v:match.educationScore},
-              ].filter(({v})=>v!=null).map(({l,v})=>(
+                // Brug AI-beregnet skills hvis tilgængeligt, ellers det regelbaserede
+                {l:'Skills', v: aiJobMatch?.coverageScore ?? match.coverageScore ?? match.skillScore,
+                  sub: aiJobMatch ? `${aiJobMatch.matched.length}/${aiJobMatch.totalRequired} krav` : null},
+                {l:'Rolle',           v:match.titleScore     ?? match.roleScore},
+                {l:'Lokation',        v:match.locationScore},
+                {l:'Erfaringsniveau', v:match.senScore},
+                {l:'Sprog',           v:match.languageScore},
+                {l:'Uddannelse',      v:match.educationScore},
+              ].filter(({v})=>v!=null).map(({l,v,sub})=>(
                 <div key={l}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-                    <span style={{color:'var(--muted)'}}>{l}</span>
+                    <span style={{color:'var(--muted)'}}>{l}{sub && <span style={{fontSize:10,color:'var(--faint)',marginLeft:4}}>{sub}</span>}</span>
                     <span style={{fontWeight:500,color:v>=75?'var(--green)':v>=50?'var(--amber)':'var(--faint)'}}>{v}%</span>
                   </div>
                   <div style={{height:2,background:'var(--surface-high)'}}>
@@ -1893,7 +2002,7 @@ Med venlig hilsen
               ))}
             </div>
 
-            {/* AI-bonus badge */}
+            {/* Bonusbadges */}
             {(match.aiBonus > 0 || match.transferBonus > 0) && (
               <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
                 {match.aiBonus > 0 && (
@@ -1909,23 +2018,43 @@ Med venlig hilsen
               </div>
             )}
 
-            {match.matched?.length>0 && (
+            {/* AI job-analyse: matchende kompetencer */}
+            {(aiJobMatch?.matched?.length > 0 || match.matched?.length > 0) && (
               <div style={{marginTop:10}}>
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:500}}>Dine matchende kompetencer: </span>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:500}}>
+                  {aiJobMatch ? 'Dine kompetencer der dækker jobbets krav:' : 'Dine matchende kompetencer:'}
+                </span>
                 <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:5}}>
-                  {match.matched.map(k=>(
+                  {(aiJobMatch?.matched || match.matched).map(k=>(
                     <span key={k} style={{fontSize:11,padding:'2px 7px',background:'var(--green-bg)',border:'1px solid var(--green-bd)',color:'var(--green)',fontWeight:500}}>{k}</span>
                   ))}
                 </div>
               </div>
             )}
 
-            {match.gaps?.length>0 && (
+            {/* AI job-analyse: kompetencegab */}
+            {(aiJobMatch?.gaps?.length > 0 || match.gaps?.length > 0) && (
               <div style={{marginTop:8}}>
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:500}}>Kompetencegab (ikke i dit CV): </span>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:500}}>
+                  {aiJobMatch ? `Jobbets krav du mangler (${aiJobMatch.gaps.length} af ${aiJobMatch.totalRequired}):` : 'Kompetencegab (ikke i dit CV):'}
+                </span>
                 <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:5}}>
-                  {match.gaps.map(k=>(
+                  {(aiJobMatch?.gaps || match.gaps).map(k=>(
                     <span key={k} style={{fontSize:11,padding:'2px 7px',background:'#FFF8F0',border:'1px solid #FDCFA4',color:'var(--amber)',fontWeight:500}}>{k}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI: nøglekrav */}
+            {aiJobMatch?.keyRequirements?.length > 0 && (
+              <div style={{marginTop:8,borderTop:'1px solid var(--border)',paddingTop:8}}>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:500}}>AI: Vigtigste krav i jobbet</span>
+                <div style={{marginTop:4,display:'flex',flexDirection:'column',gap:2}}>
+                  {aiJobMatch.keyRequirements.slice(0,4).map((r,i)=>(
+                    <div key={i} style={{fontSize:11,color:'var(--text)',display:'flex',gap:5}}>
+                      <span style={{color:'var(--faint)',flexShrink:0}}>·</span>{r}
+                    </div>
                   ))}
                 </div>
               </div>

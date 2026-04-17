@@ -347,6 +347,59 @@ REGLER FOR ØVRIGE FELTER:
 CV:
 """
 
+JOB_SYSTEM = """Du er en rekrutteringsekspert. Analyser jobopslaget og identificer præcis hvad kandidaten skal have af kompetencer. Returnér KUN gyldig JSON – ingen markdown."""
+
+JOB_PROMPT = """Analyser dette jobopslag og returnér præcis dette JSON-format:
+
+{
+  "required_skills": ["Python", "SQL", "Machine Learning", "Data Analysis", "Power BI"],
+  "nice_to_have": ["Spark", "Databricks"],
+  "seniority": "Mid-level",
+  "education_req": "Kandidat",
+  "languages": ["Dansk", "Engelsk"],
+  "key_requirements": ["Erfaring med AI/ML-modeller", "Kendskab til data pipelines"]
+}
+
+REGLER:
+- required_skills: ALLE teknologier, metoder og kompetencer jobbet eksplicit kræver eller tydeligt forventer. Vær generøs – hellere for mange end for få. Inkludér bløde kompetencer som "samarbejde", "kommunikation" osv.
+- nice_to_have: kompetencer nævnt med "gerne", "fordel", "plus", "vi sætter pris på" osv.
+- seniority: "Junior" / "Mid-level" / "Senior" / "Lead / Manager"
+- education_req: "PhD" / "Kandidat" / "Bachelor" / null (hvis ikke nævnt)
+- languages: krævede sprog
+- key_requirements: max 5 vigtigste krav som korte sætninger
+
+Jobopslag:
+"""
+
+def analyze_job_with_ai(title, description, ai_type, ai_client):
+    if not ai_client:
+        return {"error": "Ingen AI-klient"}
+    text = f"Titel: {title}\n\n{description[:4000]}"
+    try:
+        if ai_type == "openai":
+            resp = ai_client.chat.completions.create(
+                model="gpt-4o-mini", max_tokens=800, temperature=0.1,
+                messages=[{"role":"system","content":JOB_SYSTEM},{"role":"user","content":JOB_PROMPT+text}]
+            )
+            raw = resp.choices[0].message.content.strip()
+        else:
+            resp = ai_client.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=800,
+                system=JOB_SYSTEM,
+                messages=[{"role":"user","content":JOB_PROMPT+text}]
+            )
+            raw = resp.content[0].text.strip()
+
+        raw = re.sub(r"^```[a-z]*\n?","",raw).rstrip("` \n").strip()
+        result = json.loads(raw)
+        result["ai_analyzed"] = True
+        return result
+    except json.JSONDecodeError as e:
+        return {"error": f"Ugyldig JSON: {e}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def analyze_cv_with_ai(cv_text, ai_type, ai_client):
     if not ai_client:
         return {"fallback": True, "error": "Ingen AI-klient"}
@@ -460,6 +513,25 @@ class Handler(SimpleHTTPRequestHandler):
                 traceback.print_exc()
                 self._json({"fallback": True, "error": str(e)}, 500)
             return
+        if urlparse(self.path).path == "/api/analyze-job":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body   = json.loads(self.rfile.read(length).decode())
+                title  = body.get("title", "").strip()
+                desc   = body.get("description", "").strip()
+                if not desc:
+                    self._json({"error": "Tom beskrivelse"}, 400); return
+
+                print(f"  [AI] Analyserer job: '{title[:50]}' ({len(desc)} tegn)…")
+                result = analyze_job_with_ai(title, desc, Handler.ai_type, Handler.ai_client)
+                n = len(result.get("required_skills", []))
+                print(f"  [AI] ✅ Job-analyse: {n} required skills")
+                self._json(result)
+            except Exception as e:
+                traceback.print_exc()
+                self._json({"error": str(e)}, 500)
+            return
+
         self.send_error(404)
 
     def do_OPTIONS(self):
