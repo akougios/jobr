@@ -1,36 +1,81 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#FBF9F4;
-  --surface-low:#F5F3EE;
-  --surface:#FBF9F4;
-  --surface-high:#E4E2DD;
-  --text:#1A1A1A;
-  --navy:#002147;
-  --navy-dark:#000a1e;
-  --terra:#7c6559;
-  --muted:#44474e;
-  --faint:#9a9a96;
-  --accent:var(--navy);
-  --accent-bg:#EEF2F7;
-  --accent-bd:rgba(0,33,71,0.18);
-  --green:#2d6a4f;   --green-bg:#f0f7f4; --green-bd:#b7d5c8;
-  --amber:#7c5e1e;   --amber-bg:#faf5e9; --amber-bd:#e8d5a3;
-  --red:#9b2335;
-  --border:rgba(196,198,207,0.30);
-  --border2:rgba(196,198,207,0.55);
+  /* ── Jobr Brand Guide 2026 ─────────────────────────────────────────────── */
+  --bg:        #FBF9F4;  /* Ivory   — sidebaggrund                            */
+  --surface-low:#F5F3EE; /* Paper   — sektioner / kort                        */
+  --surface:   #F5F3EE;  /* alias for surface-low                             */
+  --surface-high:#EAE8E3;/* Dust    — hover-tilstand                          */
+  --text:      #1A1A1A;  /* Charcoal — brødtekst (aldrig rent sort)           */
+  --navy:      #002147;  /* Navy    — overskrifter, knapper, links             */
+  --navy-dark: #001030;  /* Mørkere navy til mørke flader                     */
+  --tan:       #7C6559;  --terra:     #7C6559;  /* Tan     — accent (sparsomt: badge, match, streg)  */
+  --muted:     #5a5650;  /* Støjdæmpet tekst                                  */
+  --faint:     #9a9a96;  /* Meget støjdæmpet                                  */
+  --accent:    var(--navy);
+  --accent-bg: #EDF1F7;
+  --accent-bd: rgba(0,33,71,0.15);
+  /* Grøn: bekræftelse / success / ansøgt                                     */
+  --green:     #2d6a4f;  --green-bg: #f0f7f4; --green-bd: #b7d5c8;
+  /* Amber → Tan: accent til badges, match-score, discovery                   */
+  --amber:     #7C6559;  --amber-bg: #F7F3F0; --amber-bd: rgba(124,101,89,0.22);
+  --red:       #9b2335;
+  /* Borders — bruges KUN til interne skillelinjer i kort (ikke kortgrænser)  */
+  --border:    rgba(0,0,0,0.07);
+  --border2:   rgba(0,0,0,0.13);
 }
-html,body{height:100%;font-family:'Manrope',-apple-system,sans-serif;font-size:14px;line-height:1.5;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
-h1,h2,h3,.serif{font-family:'Newsreader','Georgia',serif}
-button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
-input,textarea,select{font:inherit}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html,body{
+  height:100%;
+  font-family:'Manrope',-apple-system,sans-serif;
+  font-size:14px;line-height:1.5;
+  color:var(--text);background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+/* Newsreader til overskrifter: vægt 400-500, -0,02em bogstavafstand          */
+h1,h2,h3,.serif{
+  font-family:'Newsreader','Georgia',serif;
+  letter-spacing:-0.02em;
+  font-weight:400;
+}
+/* Alle former har skarpe hjørner (0px). Kun avatarer er runde (border-radius:50%) */
+button,input,textarea,select{cursor:pointer;border:none;background:none;font:inherit;color:inherit;border-radius:0}
+input,textarea,select{cursor:auto}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-thumb{background:var(--border2)}
-.fade{animation:fadeUp .2s ease}
+
+/* ── Animationer ─────────────────────────────────────────────────────────── */
+/* 220ms standard — menuer, popups, kort der glider ind                       */
+.fade{animation:fadeUp .22s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .spin{animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .cursor{display:inline-block;width:2px;height:1em;background:var(--navy);margin-left:1px;animation:blink 1s step-end infinite;vertical-align:text-bottom}
 @keyframes blink{50%{opacity:0}}
+/* Bar: progress-striber                                                       */
 .bar{transition:width .8s cubic-bezier(.4,0,.2,1)}
-.btn-primary{background:linear-gradient(45deg,var(--navy-dark),var(--navy));color:#fff;padding:12px 32px;font-family:'Manrope',sans-serif;font-weight:600;letter-spacing:.02em;border:none;cursor:pointer;}
-.label{font-family:'Manrope',sans-serif;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+
+/* ── Primær knap — solid navy, ingen gradient, STORE BOGSTAVER ────────────── */
+.btn-primary{
+  background:var(--navy);
+  color:#fff;
+  padding:12px 32px;
+  font-family:'Manrope',sans-serif;
+  font-weight:700;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  border:none;
+  cursor:pointer;
+}
+.btn-primary:hover{background:#001a3a;transition:background .14s}
+
+/* ── Label-stil — Manrope, store bogstaver, +0,05em ─────────────────────── */
+.label{
+  font-family:'Manrope',sans-serif;
+  font-size:11px;font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}

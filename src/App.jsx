@@ -1873,7 +1873,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
     : '?';
 
   return (
-    <div style={{minHeight:'100vh',background:'#f4f2ee'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg)'}}>
       {/* Nav */}
       <div style={{background:'rgba(251,249,244,0.95)',borderBottom:'1px solid var(--border)',backdropFilter:'blur(10px)',padding:'0 24px',height:52,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:10}}>
         <Logo/>
@@ -1881,7 +1881,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
           <button onClick={onReupload} style={{fontSize:13,color:'var(--muted)',padding:'5px 10px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:5,background:'transparent'}}>
             <Ic n="upload" s={13}/>Skift CV
           </button>
-          <button onClick={onContinue} style={{fontSize:12,fontWeight:700,padding:'7px 18px',background:'linear-gradient(135deg,#0f2a4a,#1a5276)',color:'#fff',display:'flex',alignItems:'center',gap:5,letterSpacing:'.03em',boxShadow:'0 2px 8px rgba(15,42,74,0.25)'}}>
+          <button onClick={onContinue} style={{fontSize:12,fontWeight:700,padding:'7px 18px',background:'var(--navy)',color:'#fff',display:'flex',alignItems:'center',gap:5,letterSpacing:'.05em',textTransform:'uppercase'}}>
             Se job-matches<Ic n="arrow" s={13}/>
           </button>
         </div>
@@ -1906,7 +1906,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
               background:'rgba(255,255,255,0.15)',
               border:'2px solid rgba(255,255,255,0.25)',
               display:'flex',alignItems:'center',justifyContent:'center',
-              fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'.02em',
+              fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'.05em',
               fontFamily:'Manrope,sans-serif',
             }}>
               {initials}
@@ -1932,27 +1932,27 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
               {/* Meta-tags */}
               <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:14}}>
                 {profile.seniority && (
-                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontWeight:500,borderRadius:2,border:'1px solid rgba(255,255,255,0.15)'}}>
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontWeight:500,border:'1px solid rgba(255,255,255,0.15)'}}>
                     {profile.seniority}
                   </span>
                 )}
                 {profile.years > 0 && (
-                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>
                     {profile.years}+ års erfaring
                   </span>
                 )}
                 {profile.education && (
-                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>
                     {profile.education}
                   </span>
                 )}
                 {profile.location && (
-                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>
                     📍 {profile.location}
                   </span>
                 )}
                 {profile.languages?.length > 0 && (
-                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}>
+                  <span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>
                     {profile.languages.join(' · ')}
                   </span>
                 )}
@@ -1987,7 +1987,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
 
             {/* ── STYRKER ─────────────────────────────────────────────────── */}
             {profile.strengths?.length > 0 && (
-              <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{background:'#fff',padding:'20px 24px'}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>STYRKER</div>
                 <div style={{display:'flex',flexDirection:'column',gap:9}}>
                   {profile.strengths.map((s,i)=>(
@@ -2003,7 +2003,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
             )}
 
             {/* ── KOMPETENCER ──────────────────────────────────────────────── */}
-            <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+            <div style={{background:'#fff',padding:'20px 24px'}}>
               <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:16,fontFamily:'Manrope,sans-serif'}}>KOMPETENCER EFTER KATEGORI</div>
               <div style={{display:'flex',flexDirection:'column',gap:16}}>
                 {topCats.map(([cat,skills])=>{
@@ -2011,7 +2011,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
                   return (
                     <div key={cat} style={{borderLeft:`3px solid ${accent}`,paddingLeft:14}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                        <span style={{fontSize:12,fontWeight:700,color:accent,letterSpacing:'.02em'}}>{cat}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:accent,letterSpacing:'.05em'}}>{cat}</span>
                         <span style={{fontSize:11,color:'var(--faint)'}}>{skills.length}</span>
                       </div>
                       <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
@@ -2049,7 +2049,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
 
             {/* ── ERFARING ─────────────────────────────────────────────────── */}
             {profile.roles?.length > 0 && (
-              <div style={{background:'#fff',padding:'20px 24px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{background:'#fff',padding:'20px 24px'}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>DETEKTEREDE STILLINGER</div>
                 <div style={{display:'flex',flexDirection:'column',gap:0}}>
                   {profile.roles.map((r,i)=>(
@@ -2070,14 +2070,14 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
 
             {/* Top nøgleord */}
-            <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+            <div style={{background:'#fff',padding:'18px 20px'}}>
               <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>TOP NØGLEORD</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
                 {profile.keywords.slice(0,18).map((k,i)=>(
                   <span key={k} style={{
                     fontSize:12,padding:'3px 8px',
-                    background: i<6 ? '#0f2a4a' : i<12 ? '#e8edf2' : '#f4f2ee',
-                    color: i<6 ? '#fff' : i<12 ? '#1a4a7a' : 'var(--muted)',
+                    background: i<6 ? 'var(--navy)' : i<12 ? 'var(--accent-bg)' : 'var(--surface-high)',
+                    color: i<6 ? '#fff' : i<12 ? 'var(--navy)' : 'var(--muted)',
                     fontWeight: i<6 ? 600 : 400,
                   }}>
                     {k}
@@ -2088,7 +2088,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
 
             {/* Adjacent roller */}
             {profile.adjacent_roles?.length > 0 && (
-              <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+              <div style={{background:'#fff',padding:'18px 20px'}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>REALISTISKE JOBTYPER</div>
                 <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   {profile.adjacent_roles.slice(0,6).map((r,i)=>(
@@ -2102,7 +2102,7 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
 
             {/* Wildcard roller */}
             {profile.wildcard_roles?.length > 0 && (
-              <div style={{background:'#fff',padding:'18px 20px',boxShadow:'0 1px 3px rgba(0,0,0,0.06)',borderLeft:'3px solid var(--amber)'}}>
+              <div style={{background:'#fff',padding:'18px 20px',borderLeft:'3px solid var(--amber)'}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--amber)',textTransform:'uppercase',marginBottom:10,fontFamily:'Manrope,sans-serif'}}>✦ OVERRASK DIG SELV</div>
                 <div style={{fontSize:12,color:'var(--muted)',marginBottom:10,lineHeight:1.4}}>{profile.discovery_reasoning?.split('.')[0]||'Uventede roller der passer til din profil'}</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
@@ -2116,10 +2116,10 @@ const ProfileScreen = ({ profile, jobs, onContinue, onReupload, onUpdateProfile,
             {/* CTA */}
             <button onClick={onContinue} style={{
               padding:'14px',
-              background:'linear-gradient(135deg,#0f2a4a,#1a5276)',
-              color:'#fff',fontWeight:700,fontSize:14,
+              background:'var(--navy)',
+              color:'#fff',fontWeight:700,fontSize:13,
               display:'flex',alignItems:'center',justifyContent:'center',gap:6,
-              letterSpacing:'.03em',boxShadow:'0 4px 12px rgba(15,42,74,0.3)',
+              letterSpacing:'.05em',textTransform:'uppercase',
               border:'none',cursor:'pointer',
             }}>
               Se dine job-matches<Ic n="arrow" s={14}/>
@@ -2246,7 +2246,7 @@ const PrefChip = ({selected, onClick, children}) => (
     border:`1.5px solid ${selected?'var(--navy)':'var(--border2)'}`,
     background:selected?'var(--navy)':'transparent',
     color:selected?'#fff':'var(--text)',
-    transition:'all .15s', cursor:'pointer', fontFamily:'Manrope,sans-serif',
+    transition:'all .14s', cursor:'pointer', fontFamily:'Manrope,sans-serif',
     letterSpacing:selected?'.02em':0,
   }}>{children}</button>
 );
@@ -2256,7 +2256,7 @@ const PrefRadio = ({selected, onClick, label, sub}) => (
     display:'flex',alignItems:'center',gap:12,padding:'11px 14px',width:'100%',
     border:`1.5px solid ${selected?'var(--navy)':'var(--border2)'}`,
     background:selected?'var(--accent-bg)':'transparent',
-    textAlign:'left',cursor:'pointer',transition:'all .15s',
+    textAlign:'left',cursor:'pointer',transition:'all .14s',
   }}>
     <div style={{width:16,height:16,borderRadius:'50%',border:`1.5px solid ${selected?'var(--navy)':'var(--border2)'}`,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:selected?'var(--navy)':'transparent'}}>
       {selected&&<div style={{width:5,height:5,borderRadius:'50%',background:'#fff'}}/>}
@@ -2371,7 +2371,7 @@ const PreferencesScreen = ({profile, onDone, onReupload}) => {
             </div>
           </div>
 
-          <button onClick={handleDone} style={{padding:'14px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',fontWeight:700,fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',gap:8,letterSpacing:'.02em'}}>
+          <button onClick={handleDone} style={{padding:'14px',background:'var(--navy)',color:'#fff',fontWeight:700,fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',gap:8,letterSpacing:'.05em'}}>
             Se mine job-matches <Ic n="arrow" s={15}/>
           </button>
         </div>
@@ -2385,7 +2385,7 @@ const JobRow = ({job,match,selected,onSelect,saved,applied,onSave,discoveryLabel
   const [hov,setHov]=useState(false);
   return (
     <div onClick={onSelect} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{display:'flex',alignItems:'flex-start',gap:10,padding:'11px 14px',paddingLeft: discoveryLabel ? 17 : 14, borderLeft:`3px solid ${selected?'var(--navy)':discoveryLabel?'var(--amber)':'transparent'}`,borderBottom:'1px solid var(--border)',background:selected?'var(--surface-low)':hov?'var(--surface-low)':'var(--bg)',cursor:'pointer',transition:'background .1s'}}>
+      style={{display:'flex',alignItems:'flex-start',gap:10,padding:'11px 14px',paddingLeft: discoveryLabel ? 17 : 14, borderLeft:`3px solid ${selected?'var(--navy)':discoveryLabel?'var(--amber)':'transparent'}`,borderBottom:'1px solid var(--border)',background:selected?'var(--surface-low)':hov?'var(--surface-low)':'var(--bg)',cursor:'pointer',transition:'background .14s'}}>
       <div style={{position:'relative',flexShrink:0}}>
         <div style={{width:34,height:34,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,color:'var(--muted)'}}>
           {job.company[0]}
@@ -2398,7 +2398,7 @@ const JobRow = ({job,match,selected,onSelect,saved,applied,onSave,discoveryLabel
           <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
             {applied&&<span style={{fontSize:10,padding:'1px 6px',background:'var(--green-bg)',color:'var(--green)',border:'1px solid var(--green-bd)',fontWeight:600}}>Ansøgt</span>}
             {match && <Score v={match.total}/>}
-            <button onClick={e=>{e.stopPropagation();onSave(job.id)}} style={{color:saved?'var(--navy)':'var(--faint)',padding:'1px',transition:'color .15s'}}>
+            <button onClick={e=>{e.stopPropagation();onSave(job.id)}} style={{color:saved?'var(--navy)':'var(--faint)',padding:'1px',transition:'color .14s'}}>
               <Ic n={saved?'bookmarkF':'bookmark'} s={13}/>
             </button>
           </div>
@@ -2565,7 +2565,7 @@ Med venlig hilsen
         {/* Action row */}
         <div style={{display:'flex',gap:7,marginBottom:18}}>
           <button onClick={generate} disabled={appState==='gen'}
-            style={{display:'flex',alignItems:'center',gap:5,padding:'9px 18px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',fontSize:12,fontWeight:700,letterSpacing:'.02em',opacity:appState==='gen'?.7:1}}>
+            style={{display:'flex',alignItems:'center',gap:5,padding:'9px 18px',background:'var(--navy)',color:'#fff',fontSize:12,fontWeight:700,letterSpacing:'.05em',opacity:appState==='gen'?.7:1}}>
             {appState==='gen'?<span className="spin"><Ic n="loader" s={13}/></span>:null}
             {appState==='idle'?'Skriv ansøgning':'Skriv ny ansøgning'}
           </button>
@@ -2587,7 +2587,7 @@ Med venlig hilsen
                 </span>
               )}
               {aiJobMatch && (
-                <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',background:'linear-gradient(90deg,#0f2a4a,#1a4a7a)',color:'#fff',letterSpacing:'.04em'}}>
+                <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',background:'var(--navy)',color:'#fff',letterSpacing:'.05em'}}>
                   ✦ AI-analyseret
                 </span>
               )}
@@ -2620,7 +2620,7 @@ Med venlig hilsen
             {(match.aiBonus > 0 || match.transferBonus > 0) && (
               <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
                 {match.aiBonus > 0 && (
-                  <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',background:'linear-gradient(90deg,#0f2a4a,#1a4a7a)',color:'#fff',letterSpacing:'.04em'}}>
+                  <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',background:'var(--navy)',color:'#fff',letterSpacing:'.05em'}}>
                     ✦ AI +{match.aiBonus}
                   </span>
                 )}
@@ -2725,7 +2725,7 @@ Med venlig hilsen
             {appState==='done' && (
               <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',background:'var(--bg)',display:'flex',gap:7}}>
                 <button onClick={()=>!applied&&onApply&&onApply(job)}
-                  style={{flex:1,padding:'9px',background:applied?'var(--green)':'linear-gradient(45deg,var(--navy-dark),var(--navy))',color:'#fff',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background .2s',cursor:applied?'default':'pointer',letterSpacing:'.02em'}}>
+                  style={{flex:1,padding:'9px',background:applied?'var(--green)':'var(--navy)',color:'#fff',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background .14s',cursor:applied?'default':'pointer',letterSpacing:'.05em'}}>
                   <Ic n={applied?'check':'send'} s={13}/>{applied?'✓ Markeret som ansøgt':'Marker som ansøgt'}
                 </button>
               </div>
@@ -2757,7 +2757,7 @@ const PrefRow = ({label,val,icon}) => (
   </div>
 );
 
-const ProfileDashboard = ({profile,prefs,savedIds,appliedJobs,jobsDB,matches,onSelectJob,onApplyStatus,onReupload}) => {
+const ProfileDashboard = ({profile,prefs,savedIds,appliedJobs,jobsDB,matches,onSelectJob,onApplyStatus,onReupload,user}) => {
   const topMatch = useMemo(()=>{
     const vals = Object.values(matches).filter(Boolean).map(m=>m.total);
     return vals.length ? Math.max(...vals) : null;
@@ -2767,166 +2767,285 @@ const ProfileDashboard = ({profile,prefs,savedIds,appliedJobs,jobsDB,matches,onS
     savedIds.map(id=>jobsDB.find(j=>j.id===id)).filter(Boolean)
   ,[savedIds,jobsDB]);
 
-  const catData = useMemo(()=>{
-    if(!profile) return [];
-    return Object.entries(profile.skillsByCategory||{})
-      .map(([cat,skills])=>({cat,count:skills.length}))
-      .sort((a,b)=>b.count-a.count).slice(0,7);
-  },[profile]);
-  const maxCat = Math.max(...catData.map(d=>d.count),1);
+  const topCats = useMemo(()=>
+    Object.entries(profile?.skillsByCategory||{}).sort((a,b)=>b[1].length-a[1].length)
+  ,[profile]);
 
-  const initials = (profile?.roleFamily||'CV').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  // Samme navne-logik som ProfileScreen
+  const displayName = profile?.name || profile?.candidateName
+    || (user?.user_metadata?.full_name)
+    || (user?.email?.split('@')[0]?.replace(/[._]/g,' ')?.replace(/\b\w/g,c=>c.toUpperCase()))
+    || '';
+  const initials = displayName
+    ? displayName.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')
+    : (profile?.roleFamily||'CV').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
   return (
     <div style={{flex:1,overflowY:'auto',background:'var(--bg)'}}>
-      <div style={{maxWidth:820,margin:'0 auto',padding:'24px 20px 40px'}}>
+      <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 48px'}}>
 
-        {/* Hero card */}
-        <div style={{background:'var(--surface-low)',padding:'22px 24px',marginBottom:14,display:'flex',alignItems:'flex-start',gap:18}}>
-          <div style={{width:54,height:54,background:'linear-gradient(135deg,var(--navy),#3B82F6)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <span style={{color:'#fff',fontWeight:800,fontSize:18,letterSpacing:-.5}}>{initials}</span>
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:20,fontWeight:400,marginBottom:5,letterSpacing:'-.01em',fontFamily:'Newsreader,Georgia,serif'}}>{profile?.roleFamily||'Din profil'}</div>
-            <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:10,alignItems:'center'}}>
-              <span style={{fontSize:12,padding:'3px 9px',background:'var(--accent-bg)',color:'var(--navy)',border:'none',fontWeight:500}}>{profile?.seniority||'—'}</span>
-              {profile?.years&&<span style={{fontSize:12,color:'var(--muted)'}}>{profile.years}+ års erfaring</span>}
-              {profile?.education&&<span style={{fontSize:12,color:'var(--muted)'}}>{profile.education}</span>}
-              {profile?.languages?.slice(0,2).map(l=><span key={l} style={{fontSize:12,color:'var(--muted)'}}>{l}</span>)}
-            </div>
-            <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-              {profile?.skills?.slice(0,12).map((s,i)=>{
-                const isInferred = s.inferred;
-                return (
-                  <span key={s.name} title={isInferred?'Udledt fra kontekst':undefined} style={{fontSize:11,padding:'2px 8px',
-                    display:'inline-flex',alignItems:'center',gap:3,
-                    background: isInferred ? '#f0f4f8' : (i<4?'var(--accent-bg)':'var(--bg)'),
-                    border: isInferred ? '1px dashed rgba(0,33,71,0.22)' : 'none',
-                    color: isInferred ? '#3a5a80' : (i<4?'var(--navy)':'var(--muted)'),
-                    fontWeight:(!isInferred&&i<4)?500:400}}>
-                    {isInferred&&<span style={{fontSize:8,opacity:.7}}>✦</span>}
-                    {s.name}
-                  </span>
-                );
-              })}
-              {(profile?.skills?.length||0)>12&&<span style={{fontSize:11,color:'var(--faint)'}}>+{profile.skills.length-12} mere</span>}
-            </div>
-          </div>
-          <button onClick={onReupload} style={{fontSize:12,color:'var(--muted)',padding:'6px 11px',border:'1px solid var(--border2)',display:'flex',alignItems:'center',gap:4,flexShrink:0,background:'var(--surface)'}}>
-            <Ic n="upload" s={12}/>Opdater CV
-          </button>
-        </div>
+        {/* ── HERO ─────────────────────────────────────────────────────────── */}
+        <div style={{
+          background:'linear-gradient(135deg,#0f2a4a 0%,#1a4a7a 60%,#1c5fa0 100%)',
+          padding:'32px 36px',marginBottom:20,
+          position:'relative',overflow:'hidden',
+        }}>
+          {/* Decorative circles */}
+          <div style={{position:'absolute',right:-60,top:-60,width:280,height:280,borderRadius:'50%',background:'rgba(255,255,255,0.04)',pointerEvents:'none'}}/>
+          <div style={{position:'absolute',right:80,bottom:-80,width:180,height:180,borderRadius:'50%',background:'rgba(255,255,255,0.03)',pointerEvents:'none'}}/>
 
-        {/* Stats row */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}}>
-          {[
-            {label:'Kompetencer total',  val:profile?.totalSkills||0,  color:'var(--navy)'},
-            {label:'Udledt fra kontekst', val:profile?.inferredCount||0, color:'#3a5a80'},
-            {label:'Gemte jobs',   val:savedIds.length,          color:'#B45309'},
-            {label:'Top match',    val:topMatch!=null?`${topMatch}%`:'—', color:'var(--green)'},
-          ].map(({label,val,color})=>(
-            <div key={label} style={{background:'var(--surface-low)',padding:'14px 16px'}}>
-              <div style={{fontSize:26,fontWeight:800,color,marginBottom:2,fontFamily:'Newsreader,Georgia,serif'}}>{val}</div>
-              <div style={{fontSize:11,color:'var(--muted)'}}>{label}</div>
-            </div>
-          ))}
-        </div>
+          <div style={{display:'flex',alignItems:'flex-start',gap:20,position:'relative'}}>
+            {/* Avatar */}
+            <div style={{
+              width:64,height:64,borderRadius:'50%',flexShrink:0,
+              background:'rgba(255,255,255,0.15)',
+              border:'2px solid rgba(255,255,255,0.25)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'.05em',
+              fontFamily:'Manrope,sans-serif',
+            }}>{initials}</div>
 
-        {/* Skills + Prefs */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:14,marginBottom:14}}>
-          {/* Skills */}
-          <div style={{background:'var(--surface-low)',padding:'16px 18px'}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:14}}>KOMPETENCER EFTER KATEGORI</div>
-            {catData.map(({cat,count})=>(
-              <div key={cat} style={{marginBottom:11}}>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
-                  <span>{cat}</span>
-                  <span style={{color:'var(--muted)',fontWeight:500}}>{count}</span>
+            <div style={{flex:1,minWidth:0}}>
+              {profile?.aiAnalyzed&&(
+                <div style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'rgba(255,255,255,0.6)',marginBottom:8,textTransform:'uppercase'}}>
+                  <span style={{fontSize:8}}>✦</span> AI-ANALYSERET
                 </div>
-                <div style={{height:4,background:'var(--surface-high)'}}>
-                  <div className="bar" style={{height:5,width:`${(count/maxCat)*100}%`,background:'var(--navy)'}}/>
-                </div>
+              )}
+              {displayName&&(
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',fontWeight:500,marginBottom:4,letterSpacing:'.01em'}}>{displayName}</div>
+              )}
+              <h2 style={{fontSize:28,fontWeight:400,letterSpacing:'-.02em',fontFamily:'Newsreader,Georgia,serif',color:'#fff',margin:0,lineHeight:1.15}}>
+                {profile?.roleFamily||'Din profil'}
+              </h2>
+              <div style={{display:'flex',flexWrap:'wrap',gap:7,marginTop:12}}>
+                {profile?.seniority&&<span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontWeight:500,border:'1px solid rgba(255,255,255,0.15)'}}>{profile.seniority}</span>}
+                {profile?.years>0&&<span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>{profile.years}+ års erfaring</span>}
+                {profile?.education&&<span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>{profile.education}</span>}
+                {profile?.location&&<span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>📍 {profile.location}</span>}
+                {profile?.languages?.length>0&&<span style={{fontSize:12,padding:'3px 10px',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.7)',border:'1px solid rgba(255,255,255,0.1)'}}>{profile.languages.join(' · ')}</span>}
               </div>
-            ))}
+            </div>
+
+            {/* Stats + Opdater CV */}
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:16,flexShrink:0}}>
+              <button onClick={onReupload} style={{fontSize:12,color:'rgba(255,255,255,0.7)',padding:'6px 12px',border:'1px solid rgba(255,255,255,0.2)',display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.08)',cursor:'pointer'}}>
+                <Ic n="upload" s={12}/>Opdater CV
+              </button>
+              <div style={{display:'flex',gap:22}}>
+                {[
+                  {n:profile?.totalSkills||0,   l:'kompetencer'},
+                  {n:topCats.length,              l:'kategorier'},
+                  {n:topMatch!=null?`${topMatch}%`:'—', l:'top match'},
+                ].map(({n,l})=>(
+                  <div key={l} style={{textAlign:'center'}}>
+                    <div style={{fontSize:24,fontWeight:700,color:'#fff',fontFamily:'Newsreader,Georgia,serif',lineHeight:1}}>{n}</div>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.5)',marginTop:3,letterSpacing:'.03em'}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {profile?.summary&&(
+            <div style={{marginTop:18,paddingTop:14,borderTop:'1px solid rgba(255,255,255,0.1)',fontSize:13,color:'rgba(255,255,255,0.65)',fontStyle:'italic',lineHeight:1.55,maxWidth:600,position:'relative'}}>
+              "{profile.summary}"
+            </div>
+          )}
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:16,alignItems:'start'}}>
+          {/* ── VENSTRE KOLONNE ─────────────────────────────────────────────── */}
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+            {/* Stats strip */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Gemte jobs',           val:savedIds.length,           color:'#B45309'},
+                {label:'Ansøgte jobs',          val:appliedJobs.length,        color:'var(--green)'},
+                {label:'Udledt fra kontekst',   val:profile?.inferredCount||0, color:'#3a5a80'},
+              ].map(({label,val,color})=>(
+                <div key={label} style={{background:'#fff',padding:'14px 16px'}}>
+                  <div style={{fontSize:26,fontWeight:800,color,marginBottom:2,fontFamily:'Newsreader,Georgia,serif'}}>{val}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Kompetencer */}
+            <div style={{background:'#fff',padding:'20px 24px'}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:16,fontFamily:'Manrope,sans-serif'}}>KOMPETENCER EFTER KATEGORI</div>
+              <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                {topCats.map(([cat,skills])=>{
+                  const accent = CAT_COLORS[cat]||'#2d3142';
+                  return (
+                    <div key={cat} style={{borderLeft:`3px solid ${accent}`,paddingLeft:14}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                        <span style={{fontSize:12,fontWeight:700,color:accent,letterSpacing:'.05em'}}>{cat}</span>
+                        <span style={{fontSize:11,color:'var(--faint)'}}>{skills.length}</span>
+                      </div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                        {skills.map(s=>(
+                          <span key={s.name} title={s.inferred?`Udledt (${s.confidence}%):`:`Direkte (${s.confidence}%)`} style={{
+                            display:'inline-flex',alignItems:'center',gap:3,
+                            fontSize:12,padding:'3px 9px',
+                            background:s.inferred?'transparent':`${accent}12`,
+                            border:s.inferred?'1px dashed rgba(0,0,0,0.13)':`1px solid ${accent}28`,
+                            color:s.inferred?'var(--muted)':accent,
+                            fontWeight:s.inferred?400:500,
+                          }}>
+                            {s.inferred&&<span style={{fontSize:8,opacity:.6}}>✦</span>}
+                            {s.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(profile?.inferredCount||0)>0&&(
+                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:14,flexWrap:'wrap'}}>
+                  <span style={{fontSize:11,color:'var(--faint)',display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{display:'inline-block',width:10,height:10,background:'rgba(26,74,122,0.12)',border:'1px solid rgba(26,74,122,0.25)'}}/>Direkte fra CV
+                  </span>
+                  <span style={{fontSize:11,color:'var(--faint)',display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{display:'inline-block',width:10,height:10,border:'1px dashed rgba(0,0,0,0.2)',background:'transparent'}}/>✦ Udledt fra kontekst
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Stillinger */}
             {profile?.roles?.length>0&&(
-              <div style={{marginTop:14,paddingTop:14,borderTop:'1px solid var(--border)'}}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:10}}>TIDLIGERE STILLINGER</div>
-                {profile.roles.slice(0,4).map((r,i)=>(
-                  <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:i<Math.min(profile.roles.length,4)-1?'1px solid var(--border)':'none'}}>
-                    <span style={{fontSize:12,fontWeight:i===0?500:400}}>{r.title}</span>
-                    {r.years&&<span style={{fontSize:11,color:'var(--faint)'}}>{r.years}</span>}
+              <div style={{background:'#fff',padding:'20px 24px'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>DETEKTEREDE STILLINGER</div>
+                {profile.roles.map((r,i)=>(
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:i<profile.roles.length-1?'1px solid var(--border)':'none'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <div style={{width:6,height:6,background:i===0?'var(--navy)':'var(--border2)',borderRadius:'50%',flexShrink:0}}/>
+                      <span style={{fontSize:13,fontWeight:i===0?600:400,color:i===0?'var(--navy)':'var(--text)'}}>{r.title}</span>
+                    </div>
+                    {r.years&&<span style={{fontSize:12,color:'var(--faint)'}}>{r.years}</span>}
                   </div>
                 ))}
               </div>
             )}
+
+            {/* Gemte jobs */}
+            <div style={{background:'#fff'}}>
+              <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>GEMTE JOB</div>
+                <span style={{fontSize:12,color:'var(--faint)'}}>{savedJobObjs.length} job</span>
+              </div>
+              {savedJobObjs.length===0
+                ? <div style={{padding:'24px',textAlign:'center',color:'var(--faint)',fontSize:13}}>Ingen gemte job endnu — tryk på bogmærke-ikonet på et job</div>
+                : savedJobObjs.map((j,i)=>(
+                  <button key={j.id} onClick={()=>onSelectJob(j)}
+                    style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'12px 20px',borderBottom:i<savedJobObjs.length-1?'1px solid var(--border)':'none',background:'transparent',textAlign:'left',cursor:'pointer',transition:'background .14s'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='var(--surface-high)'}
+                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <div style={{width:34,height:34,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13,color:'var(--muted)',flexShrink:0}}>{j.company[0]}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+                      <div style={{fontSize:12,color:'var(--muted)'}}>{j.company} · {j.location}</div>
+                    </div>
+                    {matches[j.id]&&<Score v={matches[j.id].total}/>}
+                    <Ic n="arrow" s={13}/>
+                  </button>
+                ))
+              }
+            </div>
+
+            {/* Ansøgte jobs */}
+            <div style={{background:'#fff'}}>
+              <div style={{padding:'14px 20px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>ANSØGTE JOB</div>
+                <span style={{fontSize:12,color:'var(--faint)'}}>{appliedJobs.length} job</span>
+              </div>
+              {appliedJobs.length===0
+                ? <div style={{padding:'24px',textAlign:'center',color:'var(--faint)',fontSize:13}}>Ingen ansøgte job endnu — skriv en ansøgning og marker den som sendt</div>
+                : appliedJobs.map((a,i)=>{
+                  const si = APPLIED_STATUSES.find(s=>s.val===a.status)||APPLIED_STATUSES[0];
+                  return (
+                    <div key={a.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 20px',borderBottom:i<appliedJobs.length-1?'1px solid var(--border)':'none'}}>
+                      <div style={{width:34,height:34,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13,color:'var(--muted)',flexShrink:0}}>{a.company[0]}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div>
+                        <div style={{fontSize:12,color:'var(--muted)'}}>{a.company} · {a.date}</div>
+                      </div>
+                      <select value={a.status} onChange={e=>onApplyStatus(a.id,e.target.value)}
+                        style={{padding:'4px 8px',border:`1px solid ${si.color}`,fontSize:11,color:si.color,background:'#fff',outline:'none',fontWeight:600,cursor:'pointer'}}>
+                        {APPLIED_STATUSES.map(s=><option key={s.val} value={s.val}>{s.label}</option>)}
+                      </select>
+                    </div>
+                  );
+                })
+              }
+            </div>
+
           </div>
 
-          {/* Preferences */}
-          <div style={{background:'var(--surface-low)',padding:'16px 18px'}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif',marginBottom:14}}>DINE PRÆFERENCER</div>
-            {prefs ? <>
-              <PrefRow label="Arbejdsform" icon={PREF_WORK_MODES.find(x=>x.val===prefs.workMode)?.icon} val={prefs.workMode}/>
-              <PrefRow label="Brancher" val={prefs.industries?.length?prefs.industries.join(', '):'Alle'}/>
-              <PrefRow label="Lønniveau" val={prefs.salary?`${prefs.salary} kr/md`:'Ikke angivet'}/>
-              <PrefRow label="Søgestatus" val={PREF_STATUS.find(x=>x.val===prefs.status)?.label||prefs.status}/>
-            </> : (
-              <div style={{fontSize:13,color:'var(--faint)',lineHeight:1.6}}>Ingen præferencer sat. Upload dit CV for at komme i gang.</div>
+          {/* ── HØJRE SIDEBAR ───────────────────────────────────────────────── */}
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+            {/* Præferencer */}
+            <div style={{background:'#fff',padding:'18px 20px'}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:14,fontFamily:'Manrope,sans-serif'}}>DINE PRÆFERENCER</div>
+              {prefs ? <>
+                <PrefRow label="Arbejdsform" icon={PREF_WORK_MODES.find(x=>x.val===prefs.workMode)?.icon} val={prefs.workMode}/>
+                <PrefRow label="Brancher" val={prefs.industries?.length?prefs.industries.join(', '):'Alle'}/>
+                <PrefRow label="Lønniveau" val={prefs.salary?`${prefs.salary} kr/md`:'Ikke angivet'}/>
+                <PrefRow label="Søgestatus" val={PREF_STATUS.find(x=>x.val===prefs.status)?.label||prefs.status}/>
+              </> : (
+                <div style={{fontSize:13,color:'var(--faint)',lineHeight:1.6}}>Ingen præferencer sat endnu.</div>
+              )}
+            </div>
+
+            {/* Top nøgleord */}
+            {profile?.keywords?.length>0&&(
+              <div style={{background:'#fff',padding:'18px 20px'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>TOP NØGLEORD</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                  {profile.keywords.slice(0,16).map((k,i)=>(
+                    <span key={k} style={{
+                      fontSize:12,padding:'3px 8px',
+                      background:i<6?'var(--navy)':i<12?'var(--accent-bg)':'var(--surface-high)',
+                      color:i<6?'#fff':i<12?'var(--navy)':'var(--muted)',
+                      fontWeight:i<6?600:400,
+                    }}>{k}</span>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* Saved jobs */}
-        <div style={{background:'var(--surface-low)',marginBottom:14}}>
-          <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>GEMTE JOB</div>
-            <span style={{fontSize:12,color:'var(--faint)'}}>{savedJobObjs.length} job</span>
-          </div>
-          {savedJobObjs.length===0
-            ? <div style={{padding:'20px',textAlign:'center',color:'var(--faint)',fontSize:13}}>Ingen gemte job endnu — tryk på bogmærke-ikonet på et job</div>
-            : savedJobObjs.map((j,i)=>(
-              <button key={j.id} onClick={()=>onSelectJob(j)}
-                style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'11px 16px',borderBottom:i<savedJobObjs.length-1?'1px solid var(--border)':'none',background:'transparent',textAlign:'left',cursor:'pointer',transition:'background .1s'}}
-                onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'}
-                onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                <div style={{width:32,height:32,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13,color:'var(--muted)',flexShrink:0}}>{j.company[0]}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
-                  <div style={{fontSize:12,color:'var(--muted)'}}>{j.company} · {j.location}</div>
+            {/* Realistiske jobtyper */}
+            {profile?.adjacent_roles?.length>0&&(
+              <div style={{background:'#fff',padding:'18px 20px'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--muted)',textTransform:'uppercase',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>REALISTISKE JOBTYPER</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {profile.adjacent_roles.slice(0,6).map((r,i)=>(
+                    <div key={r} style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:i<3?'var(--navy)':'var(--muted)',fontWeight:i<3?500:400}}>
+                      <span style={{fontSize:10,color:'var(--faint)'}}>→</span>{r}
+                    </div>
+                  ))}
                 </div>
-                {matches[j.id]&&<Score v={matches[j.id].total}/>}
-                <Ic n="arrow" s={13}/>
-              </button>
-            ))
-          }
-        </div>
+              </div>
+            )}
 
-        {/* Applied jobs */}
-        <div style={{background:'var(--surface-low)'}}>
-          <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <div style={{fontSize:10,fontWeight:700,letterSpacing:'.08em',color:'var(--muted)',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>ANSØGTE JOB</div>
-            <span style={{fontSize:12,color:'var(--faint)'}}>{appliedJobs.length} job</span>
-          </div>
-          {appliedJobs.length===0
-            ? <div style={{padding:'20px',textAlign:'center',color:'var(--faint)',fontSize:13}}>Ingen ansøgte job endnu — skriv en ansøgning og marker den som sendt</div>
-            : appliedJobs.map((a,i)=>{
-              const si = APPLIED_STATUSES.find(s=>s.val===a.status)||APPLIED_STATUSES[0];
-              return (
-                <div key={a.id} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 16px',borderBottom:i<appliedJobs.length-1?'1px solid var(--border)':'none'}}>
-                  <div style={{width:32,height:32,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13,color:'var(--muted)',flexShrink:0}}>{a.company[0]}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</div>
-                    <div style={{fontSize:12,color:'var(--muted)'}}>{a.company} · {a.date}</div>
-                  </div>
-                  <select value={a.status} onChange={e=>onApplyStatus(a.id,e.target.value)}
-                    style={{padding:'4px 8px',border:`1px solid ${si.color}`,fontSize:11,color:si.color,background:'var(--surface)',outline:'none',fontWeight:600,cursor:'pointer'}}>
-                    {APPLIED_STATUSES.map(s=><option key={s.val} value={s.val}>{s.label}</option>)}
-                  </select>
+            {/* Wildcard roller */}
+            {profile?.wildcard_roles?.length>0&&(
+              <div style={{background:'#fff',padding:'18px 20px',borderLeft:'3px solid var(--amber)'}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:'var(--amber)',textTransform:'uppercase',marginBottom:10,fontFamily:'Manrope,sans-serif'}}>✦ OVERRASK DIG SELV</div>
+                <div style={{fontSize:12,color:'var(--muted)',marginBottom:10,lineHeight:1.4}}>{profile.discovery_reasoning?.split('.')[0]||'Uventede roller der passer til din profil'}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                  {profile.wildcard_roles.slice(0,5).map(r=>(
+                    <span key={r} style={{fontSize:12,padding:'3px 9px',background:'#fffbf0',border:'1px solid rgba(180,130,30,0.25)',color:'#7b5e10',fontWeight:500}}>{r}</span>
+                  ))}
                 </div>
-              );
-            })
-          }
-        </div>
+              </div>
+            )}
 
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3056,7 +3175,8 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
           jobsDB={jobsDB} matches={matches}
           onSelectJob={j=>{ switchTab('jobs'); setSelected(j); }}
           onApplyStatus={updateApplyStatus}
-          onReupload={onReupload}/>
+          onReupload={onReupload}
+          user={user}/>
       )}
 
       {/* Jobs / Gemt tabs */}
@@ -3067,16 +3187,16 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
             {/* Filters */}
             <div style={{padding:'10px 12px',borderBottom:'1px solid var(--border)',background:'var(--surface)',flexShrink:0,display:'flex',flexDirection:'column',gap:7}}>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Søg på titel, virksomhed..."
-                style={{width:'100%',padding:'7px 10px',border:'none',borderBottom:'1px solid var(--border2)',fontSize:13,outline:'none',background:'transparent',padding:'7px 0'}}
+                style={{width:'100%',padding:'7px 0',border:'none',borderBottom:'1px solid var(--border2)',fontSize:13,outline:'none',background:'transparent'}}
                 onFocus={e=>e.target.style.borderColor='var(--navy)'}
                 onBlur={e=>e.target.style.borderColor='var(--border)'}/>
               <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                 <select value={industryF} onChange={e=>setIndustryF(e.target.value)}
-                  style={{padding:'5px 8px',border:'none',borderBottom:'1px solid var(--border2)',fontSize:12,background:'transparent',outline:'none',color:'var(--text)',padding:'4px 0'}}>
+                  style={{padding:'4px 0',border:'none',borderBottom:'1px solid var(--border2)',fontSize:12,background:'transparent',outline:'none',color:'var(--text)'}}>
                   {industries.map(i=><option key={i}>{i}</option>)}
                 </select>
                 <select value={modeF} onChange={e=>setModeF(e.target.value)}
-                  style={{padding:'5px 8px',border:'none',borderBottom:'1px solid var(--border2)',fontSize:12,background:'transparent',outline:'none',color:'var(--text)',padding:'4px 0'}}>
+                  style={{padding:'4px 0',border:'none',borderBottom:'1px solid var(--border2)',fontSize:12,background:'transparent',outline:'none',color:'var(--text)'}}>
                   {modes.map(m=><option key={m}>{m}</option>)}
                 </select>
                 {profile&&(
@@ -3135,7 +3255,7 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
               {tab==='jobs' && !search && discoveredJobs.length > 0 && (
                 <div style={{padding:'0 0 24px'}}>
                   <button onClick={()=>setShowDiscovery(s=>!s)}
-                    style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:8,background:'linear-gradient(90deg,var(--amber-bg),var(--surface))',borderTop:'1px solid var(--amber-bd)',borderBottom:showDiscovery?'none':'1px solid var(--border)',cursor:'pointer'}}>
+                    style={{width:'100%',padding:'12px 14px',display:'flex',alignItems:'center',gap:8,background:'var(--amber-bg)',borderTop:'1px solid var(--amber-bd)',borderBottom:showDiscovery?'none':'1px solid var(--border)',cursor:'pointer'}}>
                     <span style={{fontSize:16}}>🔭</span>
                     <div style={{flex:1,textAlign:'left'}}>
                       <div style={{fontSize:12,fontWeight:700,color:'var(--amber)',letterSpacing:'.04em',textTransform:'uppercase',fontFamily:'Manrope,sans-serif'}}>Opdagede muligheder</div>
@@ -3212,7 +3332,7 @@ const Landing = ({onUpload, onSkip}) => {
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'60px 24px'}}>
         <div style={{maxWidth:580,width:'100%',textAlign:'center'}}>
           {/* Display headline – Newsreader */}
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--terra)',marginBottom:20,fontFamily:'Manrope,sans-serif'}}>Jobsøgning · Redesignet</div>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--tan)',marginBottom:20,fontFamily:'Manrope,sans-serif'}}>Jobsøgning · Redesignet</div>
           <h1 style={{fontSize:48,fontWeight:400,letterSpacing:'-.02em',lineHeight:1.1,marginBottom:20,fontFamily:'Newsreader,Georgia,serif'}}>
             Upload dit CV.<br/><em>Vi finder jobbet.</em>
           </h1>
@@ -3225,7 +3345,7 @@ const Landing = ({onUpload, onSkip}) => {
             onDragLeave={()=>setDrag(false)}
             onDrop={e=>{e.preventDefault();setDrag(false);onUpload(e.dataTransfer.files[0])}}
             onClick={()=>fileRef.current.click()}
-            style={{border:`1.5px dashed ${drag?'var(--navy)':'var(--border2)'}`,padding:'52px 32px',cursor:'pointer',transition:'all .15s',background:drag?'var(--accent-bg)':'var(--surface-low)',maxWidth:440,margin:'0 auto'}}>
+            style={{border:`1.5px dashed ${drag?'var(--navy)':'var(--border2)'}`,padding:'52px 32px',cursor:'pointer',transition:'all .14s',background:drag?'var(--accent-bg)':'var(--surface-low)',maxWidth:440,margin:'0 auto'}}>
             <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{display:'none'}}
               onChange={e=>e.target.files[0]&&onUpload(e.target.files[0])}/>
             <div style={{display:'flex',justifyContent:'center',color:drag?'var(--navy)':'var(--muted)',marginBottom:16}}>
@@ -3249,10 +3369,10 @@ const Landing = ({onUpload, onSkip}) => {
 /* ═══════════════════════ SHARED ═════════════════════════════════════════════ */
 const Logo = () => (
   <div style={{display:'flex',alignItems:'center',gap:8}}>
-    <div style={{width:26,height:26,background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+    <div style={{width:26,height:26,background:'var(--navy)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
       <span style={{color:'#fff',fontWeight:800,fontSize:14,lineHeight:1,fontFamily:'Newsreader,Georgia,serif',fontStyle:'italic'}}>J</span>
     </div>
-    <span style={{fontWeight:700,fontSize:16,letterSpacing:-.3,fontFamily:'Newsreader,Georgia,serif'}}>Jobr<span style={{color:'var(--terra)'}}>.</span></span>
+    <span style={{fontWeight:700,fontSize:16,letterSpacing:-.3,fontFamily:'Newsreader,Georgia,serif'}}>Jobr<span style={{color:'var(--tan)'}}>.</span></span>
   </div>
 );
 
@@ -3346,8 +3466,8 @@ const LoginScreen = ({onLogin}) => {
             {error   && <div style={{color:'var(--red)',fontSize:13,marginBottom:12,padding:'8px 12px',background:'#fff5f5'}}>{error}</div>}
             {message && <div style={{color:'var(--green)',fontSize:13,marginBottom:12,padding:'8px 12px',background:'var(--green-bg)'}}>{message}</div>}
             <button type="submit" disabled={loading} style={{
-              width:'100%',padding:'12px',background:'linear-gradient(45deg,var(--navy-dark),var(--navy))',
-              color:'#fff',fontSize:14,fontWeight:600,letterSpacing:'.02em',border:'none',cursor:loading?'default':'pointer',
+              width:'100%',padding:'12px',background:'var(--navy)',
+              color:'#fff',fontSize:14,fontWeight:600,letterSpacing:'.05em',border:'none',cursor:loading?'default':'pointer',
               opacity:loading?.7:1
             }}>
               {loading ? '...' : mode==='login' ? 'Log ind' : 'Opret konto'}
