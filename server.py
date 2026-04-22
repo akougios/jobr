@@ -609,6 +609,59 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        # ── /api/embed-match ───────────────────────────────────────────────
+        if urlparse(self.path).path == "/api/embed-match":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body   = json.loads(self.rfile.read(length).decode())
+                cv_text = body.get("cv_text", "").strip()
+                jobs    = body.get("jobs", [])
+
+                if not cv_text or not jobs:
+                    self._json({"error": "Mangler cv_text eller jobs"}, 400); return
+                if Handler.ai_type != "openai":
+                    self._json({"error": "Embeddings kræver OpenAI"}, 501); return
+
+                import math
+
+                def cosine_sim(a, b):
+                    dot  = sum(x*y for x,y in zip(a,b))
+                    magA = math.sqrt(sum(x*x for x in a))
+                    magB = math.sqrt(sum(x*x for x in b))
+                    return dot / (magA * magB) if magA and magB else 0.0
+
+                # Byg inputtekster: CV + alle jobs i én batch
+                cv_input  = cv_text[:2000]
+                job_inputs = [
+                    f"{j.get('title','')}. {(j.get('description','') or '')[:500]}"
+                    for j in jobs
+                ]
+                all_inputs = [cv_input] + job_inputs
+
+                print(f"  [Embed] Sender {len(jobs)} jobs til text-embedding-3-small…")
+                resp = Handler.ai_client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=all_inputs,
+                )
+                embs = [d.embedding for d in resp.data]
+                cv_emb = embs[0]
+
+                # Cosine sim → normalisér til 0-100 skala
+                # text-embedding-3-small giver typisk 0.25-0.90 for relaterede tekster
+                results = {}
+                for i, job in enumerate(jobs):
+                    sim  = cosine_sim(cv_emb, embs[i + 1])
+                    # Normaliser: 0.25 → 0, 0.88 → 100
+                    score = max(0.0, min(100.0, (sim - 0.25) / 0.63 * 100))
+                    results[job["id"]] = round(score, 1)
+
+                print(f"  [Embed] ✅ {len(results)} job-scores beregnet")
+                self._json(results)
+            except Exception as e:
+                traceback.print_exc()
+                self._json({"error": str(e)}, 500)
+            return
+
         if urlparse(self.path).path == "/api/analyze-cv":
             try:
                 length = int(self.headers.get("Content-Length", 0))

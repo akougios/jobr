@@ -1391,10 +1391,36 @@ function computeAIContextBonus(profile, jobText, jobTitle) {
   return Math.min(bonus, 15);
 }
 
+/* ── Adfærdsbonus: justér score baseret på hvad brugeren har klikket på ──── */
+function getBehaviorBonus(job, behavior) {
+  if (!behavior) return 0;
+  let bonus = 0;
+
+  // Branche-præference: +/- 6 point
+  const indClicks = behavior.industries || {};
+  const totalInd  = Object.values(indClicks).reduce((s,v)=>s+v,0);
+  if (totalInd >= 3 && job.industry && indClicks[job.industry]) {
+    const share    = indClicks[job.industry] / totalInd;
+    const expected = 1 / Math.max(Object.keys(indClicks).length, 1);
+    bonus += Math.round((share - expected) / Math.max(expected, 0.01) * 4);
+  }
+
+  // Arbejdsform-præference: +/- 5 point
+  const modeClicks = behavior.workModes || {};
+  const totalMode  = Object.values(modeClicks).reduce((s,v)=>s+v,0);
+  if (totalMode >= 3 && job.workMode && modeClicks[job.workMode]) {
+    const share    = modeClicks[job.workMode] / totalMode;
+    const expected = 1 / Math.max(Object.keys(modeClicks).length, 1);
+    bonus += Math.round((share - expected) / Math.max(expected, 0.01) * 3);
+  }
+
+  return Math.min(Math.max(bonus, -8), 8);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    HOVED-SCORING FUNKTION
    ════════════════════════════════════════════════════════════════════════════ */
-function scoreJob(profile, job, prefs) {
+function scoreJob(profile, job, prefs, embScore=null, behavior=null) {
   if (!profile) return null;
 
   const jobText  = norm(job.title + ' ' + job.description + ' ' + (job.keywords||[]).join(' '));
@@ -1429,16 +1455,23 @@ function scoreJob(profile, job, prefs) {
   const aiBonus  = computeAIContextBonus(profile, jobText, jobTitle);
   const indBonus = prefs?.industries?.length && prefs.industries.includes(job.industry) ? 5 : 0;
 
-  // ── Samlet score: skills + titel er kernerelevansen ───────────────────────
+  // ── Samlet score ───────────────────────────────────────────────────────────
+  // Hvis vi har en embedding-score, blandes den ind med 15% vægt.
+  // De øvrige dimensioner skaleres ned med faktor 0.85 så totalvægten = 1.
+  const embW  = embScore != null ? 0.15 : 0;
+  const scale = 1 - embW;
+
   const base = Math.round(
-    coverageScore  * 0.30 +  // Skills: hvad jobbet kræver, har du?
-    titleScore     * 0.22 +  // Rolle-alignment: er det din type job?
-    senScore       * 0.13 +  // Seniority: passer erfaringsniveauet?
-    locationScore  * 0.12 +  // Lokation (base-andel — se tillig penalty nedenfor)
-    kwScore        * 0.10 +  // Kontekstnøgleord: faglig kontekst
-    languageScore  * 0.07 +  // Sprog: kræver jobbet dansk/engelsk?
-    educationScore * 0.05 +  // Uddannelse: opfylder du formelle krav?
-    contractScore  * 0.01     // Kontrakttype: fuldtid/studiejob/deltid
+    (coverageScore  * 0.30 +  // Skills: hvad jobbet kræver, har du?
+     titleScore     * 0.22 +  // Rolle-alignment: er det din type job?
+     senScore       * 0.13 +  // Seniority: passer erfaringsniveauet?
+     locationScore  * 0.12 +  // Lokation (base-andel — se tillig penalty nedenfor)
+     kwScore        * 0.10 +  // Kontekstnøgleord: faglig kontekst
+     languageScore  * 0.07 +  // Sprog: kræver jobbet dansk/engelsk?
+     educationScore * 0.05 +  // Uddannelse: opfylder du formelle krav?
+     contractScore  * 0.01    // Kontrakttype: fuldtid/studiejob/deltid
+    ) * scale
+    + (embScore ?? 0) * embW  // Semantisk embedding-lighed (0-100)
   );
 
   // ── Lokations-straf: separat additivt fradrag (udover vægten) ─────────────
@@ -1456,8 +1489,11 @@ function scoreJob(profile, job, prefs) {
     prefs?.mobility === 'region'    && locationScore < 40 ? -6 :
     0;
 
+  // Adfærdsbonus: lærer af hvad brugeren klikker/gemmer (+/- 8 point)
+  const behaviorBonus = getBehaviorBonus(job, behavior);
+
   const rawTotal = base + transfer.bonus + aiBonus + indBonus + gradBonus
-                 + locationPenalty + mobilityPenalty;
+                 + locationPenalty + mobilityPenalty + behaviorBonus;
 
   // ── Relevans-gate: svage skills+titel begrænser totalen ───────────────────
   const relevance = coverageScore * 0.55 + titleScore * 0.45;
@@ -1507,6 +1543,8 @@ function scoreJob(profile, job, prefs) {
   if (educationScore <= 45)   reasons.push('Uddannelseskrav er højere end dit niveau');
   if (aiBonus >= 10)          reasons.push('AI: din profil matcher denne rolleprofil godt');
   if (transfer.bonus >= 12)   reasons.push('Stærke transferable skills fra dit fagområde');
+  if (embScore != null && embScore >= 65) reasons.push('Semantisk lighed: din profil minder om denne rolleprofil');
+  if (behaviorBonus >= 5)     reasons.push('Matcher dine søgemønstre og præferencer');
 
   // ── Skill-gaps ──────────────────────────────────────────────────────────────
   const cvNormSet = new Set(profile.skills.map(s => norm(s.name)));
@@ -1515,7 +1553,7 @@ function scoreJob(profile, job, prefs) {
   return {
     total, coverageScore, titleScore, senScore, kwScore, domainScore,
     locationScore, languageScore, educationScore, contractScore,
-    transferBonus: transfer.bonus, aiBonus, gradBonus,
+    transferBonus: transfer.bonus, aiBonus, gradBonus, embScore, behaviorBonus,
     locationPenalty, mobilityPenalty,
     matched, gaps, reasons,
     descQuality, relevance,
@@ -2599,6 +2637,8 @@ Med venlig hilsen
                 {l:'Skills', v: aiJobMatch?.coverageScore ?? match.coverageScore ?? match.skillScore,
                   sub: aiJobMatch ? `${aiJobMatch.matched.length}/${aiJobMatch.totalRequired} krav` : null},
                 {l:'Rolle',           v:match.titleScore     ?? match.roleScore},
+                {l:'Semantisk lighed',v:match.embScore!=null ? Math.round(match.embScore) : null,
+                  sub: match.embScore!=null ? 'AI embedding' : null},
                 {l:'Lokation',        v:match.locationScore},
                 {l:'Erfaringsniveau', v:match.senScore},
                 {l:'Sprog',           v:match.languageScore},
@@ -3064,6 +3104,67 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
   const [realJobs,setRealJobs] = useState(!!jobsLoaded);
   const [refreshing,setRefreshing] = useState(false);
 
+  // ── Semantiske embedding-scores {jobId: score} ───────────────────────────
+  const [embeddingScores, setEmbeddingScores] = useState({});
+  const embFetchedRef = useRef(false); // undgå dobbelt-kald
+
+  // ── Adfærds-tracking: lær af hvad brugeren klikker/gemmer ───────────────
+  const [behavior, setBehavior] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem('jobr_behavior')||'{}'); }catch{ return {}; }
+  });
+  const trackBehavior = useCallback((job) => {
+    setBehavior(prev => {
+      const next = {
+        ...prev,
+        industries: {
+          ...(prev.industries||{}),
+          ...(job.industry ? {[job.industry]: ((prev.industries||{})[job.industry]||0)+1} : {}),
+        },
+        workModes: {
+          ...(prev.workModes||{}),
+          ...(job.workMode ? {[job.workMode]: ((prev.workModes||{})[job.workMode]||0)+1} : {}),
+        },
+      };
+      try{ localStorage.setItem('jobr_behavior', JSON.stringify(next)); }catch{}
+      return next;
+    });
+  }, []);
+
+  // ── Hent embedding-scores når profil + jobs er klar ─────────────────────
+  useEffect(()=>{
+    if (!profile || !jobsDB.length || embFetchedRef.current) return;
+    embFetchedRef.current = true;
+
+    const cvText = [
+      profile.roleFamily,
+      profile.summary,
+      profile.skills?.slice(0,25).map(s=>s.name).join(', '),
+      profile.adjacent_roles?.join(', '),
+      profile.keywords?.slice(0,10).join(', '),
+    ].filter(Boolean).join('. ');
+
+    const jobPayload = jobsDB.map(j=>({
+      id: j.id,
+      title: j.title,
+      description: (j.description||'').slice(0, 500),
+    }));
+
+    fetch(`${API_BASE}/api/embed-match`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ cv_text: cvText, jobs: jobPayload }),
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(scores => {
+        console.log('[Embed] ✅ Scores modtaget:', Object.keys(scores).length, 'jobs');
+        setEmbeddingScores(scores);
+      })
+      .catch(e => console.warn('[Embed] Ikke tilgængelig:', e));
+  }, [profile, jobsDB]);
+
+  // Reset embedding fetch hvis jobs genindlæses
+  useEffect(()=>{ embFetchedRef.current = false; }, [jobsDB]);
+
   // Saved + applied — persisteret i localStorage
   const [savedIds,setSavedIds] = useState(()=>{
     try{ return JSON.parse(localStorage.getItem('jobr_saved')||'[]'); }catch{ return []; }
@@ -3088,9 +3189,11 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
   const matches = useMemo(()=>{
     if(!profile) return {};
     const m={};
-    jobsDB.forEach(j=>{ m[j.id]=scoreJob(profile,j,prefs); });
+    jobsDB.forEach(j=>{
+      m[j.id] = scoreJob(profile, j, prefs, embeddingScores[j.id] ?? null, behavior);
+    });
     return m;
-  },[profile,jobsDB,prefs]);
+  },[profile, jobsDB, prefs, embeddingScores, behavior]);
 
   // Discovery: jobs der matcher wildcard_roles men ikke er i top-matches
   const discoveredJobs = useMemo(()=>{
@@ -3245,7 +3348,8 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
                     </div>
                   : filtered.map(j=>(
                     <JobRow key={j.id} job={j} match={matches[j.id]}
-                      selected={selected?.id===j.id} onSelect={()=>setSelected(j)}
+                      selected={selected?.id===j.id}
+                      onSelect={()=>{ setSelected(j); trackBehavior(j); }}
                       saved={savedIds.includes(j.id)} applied={isApplied(j.id)}
                       onSave={toggleSave}/>
                   ))
@@ -3277,7 +3381,7 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
                           <div style={{position:'absolute',top:10,left:0,width:3,height:'calc(100% - 20px)',background:'var(--amber)',opacity:.6}}/>
                           <JobRow job={j} match={{total:j._discovery.score, reasons:[`Wildcard match: ${j._discovery.matchedRole}`]}}
                             selected={selected?.id===j.id}
-                            onSelect={()=>setSelected(j)}
+                            onSelect={()=>{ setSelected(j); trackBehavior(j); }}
                             saved={savedIds.includes(j.id)} applied={isApplied(j.id)}
                             onSave={toggleSave}
                             discoveryLabel={j._discovery.matchedRole}/>
