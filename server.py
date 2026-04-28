@@ -961,7 +961,29 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/cache-reset":
             _bulk_cache.clear()
             _bulk_cache.update({"jobs": [], "ts": 0})
-            self._json({"ok": True, "msg": "Bulk-cache nulstillet — næste /api/jobs/all henter friske data"})
+            self._json({"ok": True, "msg": "Cache nulstillet"})
+            return
+
+        # ── /api/source-test ──────────────────────────────────────────────
+        if parsed.path == "/api/source-test":
+            import requests as req
+            results = {}
+            tests = [
+                ("jobindex_rss",    "https://www.jobindex.dk/jobsoegning.rss"),
+                ("jobindex_rss2",   "https://www.jobindex.dk/jobsoegning/it.rss"),
+                ("jobnet",          "https://job.jobnet.dk/CV/FindWork/Search?Offset=0&SortValue=NewestPosted&widk=true"),
+                ("itjobbank",       "https://www.it-jobbank.dk/api/jobad/list.json?rows=3"),
+                ("adzuna_quota",    f"https://api.adzuna.com/v1/api/jobs/dk/quota?app_id={ADZUNA_APP_ID}&app_key={ADZUNA_APP_KEY}"),
+            ]
+            for name, url in tests:
+                try:
+                    r = req.get(url, timeout=10, verify=False,
+                                headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/124.0.0.0"})
+                    results[name] = {"status": r.status_code, "bytes": len(r.content),
+                                     "preview": r.text[:150].replace("\n", " ")}
+                except Exception as e:
+                    results[name] = {"error": str(e)}
+            self._json(results)
             return
 
         # ── /api/jobs ──────────────────────────────────────────────────────
