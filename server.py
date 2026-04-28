@@ -86,7 +86,7 @@ def setup_ai():
 
 # ─── STAR JobAnnonceService (mTLS certifikat-autentificering) ────────────────
 
-STAR_BASE = "https://job.starcloud.dk"   # Test-miljø — skift til job.bm.dk for produktion
+STAR_BASE = "https://virksomhedsindsatst1.starcloud.dk"   # Test — skift til virksomhedsindsats.bm.dk for produktion
 
 _star_session  = None
 _star_tmp_cert = None   # midlertidigt filnavn
@@ -141,11 +141,11 @@ def fetch_star_page(offset=0, search=""):
         return [], "STAR ikke konfigureret", 0
     import requests as req
     try:
-        # Jobnet-stil endpoint — justér hvis STAR's swagger viser et andet path
-        url = f"{STAR_BASE}/api/v1/jobopslag"
-        params = {"Offset": offset, "Antal": 20, "SortBy": "Oprettelsesdato"}
+        # STAR JobAnnonceService v2 endpoint
+        url = f"{STAR_BASE}/v2/Jobannonce"
+        params = {"pageSize": 20, "pageNumber": max(1, offset // 20 + 1)}
         if search:
-            params["Soegning"] = search
+            params["search"] = search
         print(f"  [STAR] GET {url} offset={offset}")
         r = session.get(url, params=params, timeout=20)
         print(f"  [STAR] HTTP {r.status_code}  body[:300]: {r.text[:300]}")
@@ -207,62 +207,140 @@ def fetch_star_page(offset=0, search=""):
 ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID",  "89154cc5")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "c5a493c6da98b7710733944cf74b9d07")
 
-def fetch_adzuna_page(offset=0, search=""):
+# Søgetermer der dækker det danske jobmarked bredt
+ADZUNA_SEARCHES = [
+    "",                  # Alle job
+    "software developer",
+    "data analyst",
+    "designer",
+    "marketing",
+    "projektleder",
+    "salgskonsulent",
+    "ingeniør",
+]
+
+# ── Bulk-cache: opdateres max 1 gang i timen ───────────────────────────────
+_bulk_cache = {"jobs": [], "ts": 0}
+BULK_TTL    = 3600  # sekunder
+
+def detect_work_mode(title, description):
+    """Detektér Remote / Hybrid / Kontor fra tekst."""
+    text = (title + " " + description).lower()
+    if re.search(r'\b(fully remote|100%\s*remote|remote.?only|fuld.?fjernarbejde)\b', text):
+        return "Remote"
+    if re.search(r'\b(remote|work from home|hjemmearbejde|wfh)\b', text):
+        return "Remote"
+    if re.search(r'\b(hybrid|delvist remote|fleksibel arbejdsplads|hjemmefra)\b', text):
+        return "Hybrid"
+    return "Kontor"
+
+def parse_adzuna_job(p):
+    """Parser ét Adzuna job-objekt til vores format."""
+    jid         = str(p.get("id", ""))
+    title       = (p.get("title") or "").strip()
+    company     = (p.get("company", {}) or {}).get("display_name", "Ukendt")
+    loc_data    = p.get("location", {}) or {}
+    location    = loc_data.get("display_name", "Danmark")
+    # Rens lokation: fjern "Denmark, " prefix
+    location    = re.sub(r'^Denmark,\s*', '', location).strip() or "Danmark"
+    description = clean_html(p.get("description") or "")[:1500]
+    salary_min  = p.get("salary_min")
+    salary_max  = p.get("salary_max")
+    salary      = ""
+    if salary_min and salary_max and salary_min > 1000:
+        # Adzuna returnerer årsløn — konvertér til månedlig
+        mo_min = int(salary_min / 12)
+        mo_max = int(salary_max / 12)
+        salary = f"{mo_min:,}–{mo_max:,} kr/md".replace(",", ".")
+    created     = p.get("created") or ""
+    redirect    = p.get("redirect_url") or ""
+    contract    = (p.get("contract_time") or "full_time")
+    job_type    = "Studiejob" if "part" in contract else "Fuldtid"
+    return {
+        "id":          f"az-{jid}",
+        "title":       title,
+        "company":     company,
+        "location":    location,
+        "type":        job_type,
+        "workMode":    detect_work_mode(title, description),
+        "salary":      salary,
+        "description": description,
+        "keywords":    extract_kws(title + " " + description),
+        "posted":      parse_date(created),
+        "deadline":    "",
+        "url":         redirect,
+        "source":      "adzuna.dk",
+        "sourceLabel": "Adzuna",
+        "industry":    get_industry(title, description),
+    }
+
+def fetch_adzuna_page(offset=0, search="", per_page=50):
     import requests as req
-    page = (offset // 20) + 1
-    url = f"https://api.adzuna.com/v1/api/jobs/dk/search/{page}"
+    page = (offset // per_page) + 1
+    url  = f"https://api.adzuna.com/v1/api/jobs/dk/search/{page}"
     params = {
         "app_id":           ADZUNA_APP_ID,
         "app_key":          ADZUNA_APP_KEY,
-        "results_per_page": 20,
+        "results_per_page": per_page,
         "what":             search or "",
         "sort_by":          "date",
         "content-type":     "application/json",
     }
     try:
-        print(f"  [Adzuna] GET {url} page={page}")
         r = req.get(url, params=params, timeout=15)
-        print(f"  [Adzuna] Status: {r.status_code}, Body[:200]: {r.text[:200]}")
         if r.status_code != 200:
             return [], f"Adzuna HTTP {r.status_code}", 0
         data = r.json()
     except Exception as e:
         return [], str(e), 0
 
-    results = data.get("results") or []
-    jobs = []
-    for p in results:
-        jid         = str(p.get("id", ""))
-        title       = (p.get("title") or "").strip()
-        company     = (p.get("company", {}) or {}).get("display_name", "Ukendt")
-        location    = (p.get("location", {}) or {}).get("display_name", "Danmark")
-        description = clean_html(p.get("description") or "")[:1500]
-        salary_min  = p.get("salary_min")
-        salary_max  = p.get("salary_max")
-        salary      = f"{int(salary_min):,}–{int(salary_max):,} kr/md".replace(",", ".") if salary_min and salary_max else ""
-        created     = p.get("created") or ""
-        redirect    = p.get("redirect_url") or ""
-        contract    = (p.get("contract_time") or "full_time").replace("_", " ").title()
-        jobs.append({
-            "id":          f"az-{jid}",
-            "title":       title,
-            "company":     company,
-            "location":    location,
-            "type":        contract,
-            "workMode":    "Kontor",
-            "salary":      salary,
-            "description": description,
-            "keywords":    extract_kws(title + " " + description),
-            "posted":      parse_date(created),
-            "deadline":    "",
-            "url":         redirect,
-            "source":      "adzuna.dk",
-            "sourceLabel": "Adzuna",
-            "industry":    get_industry(title, description),
-        })
-
+    jobs  = [parse_adzuna_job(p) for p in (data.get("results") or []) if p.get("id")]
     total = data.get("count") or len(jobs)
     return jobs, None, total
+
+def fetch_bulk_jobs():
+    """Hent ~300 unikke job via parallelle Adzuna-søgninger. Caches 1 time."""
+    global _bulk_cache
+    now = time.time()
+    if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
+        print(f"  [Bulk] Cache hit — {len(_bulk_cache['jobs'])} job")
+        return _bulk_cache["jobs"]
+
+    import concurrent.futures
+    seen     = set()
+    all_jobs = []
+
+    def safe_fetch(search, page):
+        try:
+            offset = (page - 1) * 50
+            jobs, err, _ = fetch_adzuna_page(offset, search, per_page=50)
+            return jobs
+        except Exception as e:
+            print(f"  [Bulk] Fejl ({search!r} s.{page}): {e}")
+            return []
+
+    tasks = []
+    # Side 1-4 af generel søgning
+    for pg in range(1, 5):
+        tasks.append(("", pg))
+    # Side 1 af kategori-søgninger
+    for term in ADZUNA_SEARCHES[1:]:
+        tasks.append((term, 1))
+
+    print(f"  [Bulk] Starter {len(tasks)} parallelle Adzuna-kald…")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(safe_fetch, t[0], t[1]): t for t in tasks}
+        for f in concurrent.futures.as_completed(futures):
+            for job in f.result():
+                if job["id"] not in seen:
+                    seen.add(job["id"])
+                    all_jobs.append(job)
+
+    # Sortér nyeste først
+    all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
+    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job hentet")
+    _bulk_cache = {"jobs": all_jobs, "ts": now}
+    return all_jobs
 
 
 # ─── Jobnet proxy ─────────────────────────────────────────────────────────────
@@ -681,6 +759,13 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        # ── /api/jobs/all ─────────────────────────────────────────────────
+        # Returnerer alle job i én bulk (cached 1 time) — bruges af frontend
+        if parsed.path == "/api/jobs/all":
+            jobs = fetch_bulk_jobs()
+            self._json({"jobs": jobs, "total": len(jobs), "source": "adzuna-bulk"})
+            return
+
         # ── /api/jobs ──────────────────────────────────────────────────────
         if parsed.path == "/api/jobs":
             qs     = parse_qs(parsed.query)
@@ -723,8 +808,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             import requests as req
             try:
-                url = f"{STAR_BASE}/api/v1/jobopslag"
-                r = session.get(url, params={"Offset": 0, "Antal": 1}, timeout=15)
+                url = f"{STAR_BASE}/v2/Jobannonce"
+                r = session.get(url, params={"pageSize": 1, "pageNumber": 1}, timeout=15)
                 self._json({"ok": r.status_code == 200, "status": r.status_code, "body": r.text[:500], "url": url})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)})

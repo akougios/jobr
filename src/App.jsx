@@ -1750,16 +1750,38 @@ function parseJobnetData(data) {
   });
 }
 
+async function fetchAllJobs() {
+  // Henter alle job i én bulk fra Railway (/api/jobs/all) — ~300 unikke job, cached 1 time
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? '' : 'https://web-production-6d78c.up.railway.app';
+  try {
+    const r = await fetch(`${base}/api/jobs/all`, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (Array.isArray(data.jobs) && data.jobs.length > 0) {
+      return { jobs: data.jobs, total: data.total || data.jobs.length };
+    }
+    throw new Error('Ingen job i svar');
+  } catch(e) {
+    console.warn('[Jobs] Bulk-fetch fejlede, prøver enkelt-kald:', e.message);
+    // Fallback: hent én side
+    const r2 = await fetch(`${base}/api/jobs?offset=0`, { signal: AbortSignal.timeout(20000) });
+    if (!r2.ok) throw new Error(`Fallback HTTP ${r2.status}`);
+    const data2 = await r2.json();
+    return { jobs: data2.jobs || [], total: data2.total || 0 };
+  }
+}
+
 async function fetchJobnetBrowser(offset=0, search='') {
-  // Kalder Vercel serverless function /api/jobs (JSearch via RapidAPI)
+  // Beholdt som fallback for søgning
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? '' : 'https://web-production-6d78c.up.railway.app';
   const params = new URLSearchParams({ offset, ...(search ? { q: search } : {}) });
-  const r = await fetch(`/api/jobs?${params}`, { signal: AbortSignal.timeout(20000) });
+  const r = await fetch(`${base}/api/jobs?${params}`, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`/api/jobs HTTP ${r.status}`);
   const data = await r.json();
   if (data.error) throw new Error(data.error);
-  // JSearch returnerer allerede parsede jobs
   if (Array.isArray(data.jobs)) return { jobs: data.jobs, total: data.total || data.jobs.length };
-  // Fallback: prøv Jobnet-format
   const jobs = parseJobnetData(data);
   return { jobs, total: data.TotalResultCount || jobs.length };
 }
@@ -2543,35 +2565,81 @@ const JobDetail = ({job,match,saved,onSave,applied,onApply,profile}) => {
     .catch(() => setAiJobLoading(false));
   }, [job?.id]);
 
-  const generate = useCallback(() => {
+  const generate = useCallback(async () => {
     setAppState('gen'); setEdit(false);
+
+    const animate = (letter) => {
+      let i = 0;
+      const iv = setInterval(()=>{
+        i += 20;
+        if(i >= letter.length){ setAppText(letter); setAppState('done'); clearInterval(iv); }
+        else setAppText(letter.slice(0, i));
+      }, 12);
+    };
+
+    // Prøv AI-genereret brev via Railway
+    if (API_BASE || window.location.hostname === 'localhost') {
+      try {
+        const resp = await fetch(`${API_BASE}/api/generate-letter`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            profile: {
+              name:        profile?.name || '',
+              roleFamily:  profile?.roleFamily || '',
+              seniority:   profile?.seniority || '',
+              years:       profile?.years || 0,
+              education:   profile?.education || '',
+              skills:      profile?.skills?.slice(0,25) || [],
+              strengths:   profile?.strengths || [],
+              summary:     profile?.summary || '',
+            },
+            job: {
+              title:       job.title,
+              company:     job.company,
+              industry:    job.industry || '',
+              description: (job.description||'').slice(0,700),
+              keywords:    job.keywords||[],
+              workMode:    job.workMode||'',
+            },
+            match: {
+              matched:         (match?.matched||[]).slice(0,8),
+              gaps:            (match?.gaps || aiJobMatch?.gaps || []).slice(0,4),
+              keyRequirements: aiJobMatch?.keyRequirements||[],
+            }
+          })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.letter) { animate(data.letter); return; }
+        }
+      } catch(e) {
+        console.warn('[Letter] API ikke tilgængelig, bruger fallback:', e.message);
+      }
+    }
+
+    // Fallback: skabelon-brev
     const topSkills = match?.matched?.slice(0,3).join(', ') || profile?.keywords?.slice(0,3).join(', ') || 'relevante kompetencer';
     const years = profile?.years ? `${profile.years}+ år` : 'solid';
     const sen = profile?.seniority || '';
     const letter =
 `Kære ${job.company},
 
-Jeg søger stillingen som ${job.title} med stor interesse.
+Med ${years} erfaring som ${sen.toLowerCase()} profil inden for ${profile?.roleFamily || 'mit fagområde'} og kompetencer i ${topSkills} ser jeg stillingen som ${job.title} som et oplagt næste skridt.
 
-Med ${years} erfaring som ${sen.toLowerCase()} profil inden for ${profile?.roleFamily || 'mit fagområde'} og dokumenterede kompetencer i ${topSkills}, er jeg overbevist om, at jeg kan bidrage meningsfuldt til jeres team.
+Min baggrund giver mig et solidt fundament til at bidrage til jeres team. Jeg arbejder struktureret, kommunikerer klart og er hurtig til at sætte mig ind i nye domæner.
 
-Det, der tiltrækker mig ved ${job.company}, er jeres fokus på ${job.industry}${job.keywords?.length ? ` og det konkrete arbejde med ${job.keywords.slice(0,2).join(' og ')}` : ''}. Jeg er vant til at navigere i ${(job.workMode||'hybrid').toLowerCase()} miljøer og leverer resultater både selvstændigt og i tæt samarbejde med andre.
+Det, der tiltrækker mig ved ${job.company}, er jeres fokus på ${job.industry||'jeres forretningsområde'}${job.keywords?.length ? ` og det konkrete arbejde med ${job.keywords.slice(0,2).join(' og ')}` : ''}. Jeg er vant til at navigere i ${(job.workMode||'hybrid').toLowerCase()} miljøer og leverer resultater både selvstændigt og i tæt samarbejde med andre.
 
-${match?.gaps?.length ? `Jeg er desuden i gang med at udvide min profil med ${match.gaps.slice(0,2).join(' og ')}, som jeg ser som naturlige næste skridt.` : 'Jeg arbejder struktureret, kommunikerer klart og er hurtig til at sætte mig ind i nye domæner.'}
+${match?.gaps?.length ? `Jeg arbejder desuden på at styrke mine kompetencer inden for ${match.gaps.slice(0,2).join(' og ')}.` : 'Jeg er nysgerrig, løsningsorienteret og klar til at gøre en forskel fra dag ét.'}
 
-Jeg ser frem til en samtale om, hvordan jeg kan bidrage til ${job.company}s vækst og mål.
+Jeg ser gerne frem til en dialog om, hvordan jeg kan bidrage til ${job.company}s mål.
 
 Med venlig hilsen
 
 [Dit navn]`;
-
-    let i=0;
-    const iv = setInterval(()=>{
-      i+=12;
-      if(i>=letter.length){setAppText(letter);setAppState('done');clearInterval(iv);}
-      else setAppText(letter.slice(0,i));
-    },14);
-  },[job,match,profile]);
+    animate(letter);
+  },[job,match,profile,aiJobMatch]);
 
   return (
     <div style={{height:'100%',overflowY:'auto'}}>
@@ -3103,6 +3171,7 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
   const [jobsDB,setJobsDB] = useState(jobs);
   const [realJobs,setRealJobs] = useState(!!jobsLoaded);
   const [refreshing,setRefreshing] = useState(false);
+  const [cvBannerDismissed,setCvBannerDismissed] = useState(false);
 
   // ── Semantiske embedding-scores {jobId: score} ───────────────────────────
   const [embeddingScores, setEmbeddingScores] = useState({});
@@ -3273,13 +3342,36 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
 
       {/* Profil-tab */}
       {tab==='profil'&&(
-        <ProfileDashboard profile={profile} prefs={prefs}
-          savedIds={savedIds} appliedJobs={appliedJobs}
-          jobsDB={jobsDB} matches={matches}
-          onSelectJob={j=>{ switchTab('jobs'); setSelected(j); }}
-          onApplyStatus={updateApplyStatus}
-          onReupload={onReupload}
-          user={user}/>
+        profile
+          ? <ProfileDashboard profile={profile} prefs={prefs}
+              savedIds={savedIds} appliedJobs={appliedJobs}
+              jobsDB={jobsDB} matches={matches}
+              onSelectJob={j=>{ switchTab('jobs'); setSelected(j); }}
+              onApplyStatus={updateApplyStatus}
+              onReupload={onReupload}
+              user={user}/>
+          : <div className="fade" style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,textAlign:'center',gap:0}}>
+              {/* Illustration */}
+              <div style={{width:64,height:64,background:'var(--surface-high)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24}}>
+                <Ic n="user" s={28} style={{color:'var(--muted)'}}/>
+              </div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--tan)',marginBottom:12,fontFamily:'Manrope,sans-serif'}}>Ingen profil endnu</div>
+              <h2 style={{fontSize:24,fontWeight:400,letterSpacing:'-.02em',fontFamily:'Newsreader,Georgia,serif',marginBottom:12,lineHeight:1.2}}>
+                Upload dit CV<br/>og lad AI bygge din profil
+              </h2>
+              <p style={{fontSize:14,color:'var(--muted)',lineHeight:1.6,maxWidth:340,marginBottom:32}}>
+                Jobr udtrækker automatisk dine kompetencer, beregner din karriereniveau og matcher dig med de mest relevante stillinger.
+              </p>
+              <button onClick={onReupload}
+                style={{padding:'13px 36px',background:'var(--navy)',color:'#fff',fontSize:13,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',marginBottom:20}}>
+                <span style={{display:'flex',alignItems:'center',gap:8}}><Ic n="upload" s={14}/>Upload CV</span>
+              </button>
+              <div style={{display:'flex',gap:24,fontSize:12,color:'var(--muted)'}}>
+                {['Automatisk profil','Match-score pr. job','AI-ansøgning'].map(f=>(
+                  <span key={f} style={{display:'flex',alignItems:'center',gap:4}}><Ic n="check" s={11}/>{f}</span>
+                ))}
+              </div>
+            </div>
       )}
 
       {/* Jobs / Gemt tabs */}
@@ -3330,6 +3422,27 @@ const JobsScreen = ({profile, prefs, jobs, jobsLoaded, jobsLoading, jobsTotal, o
                 {refreshing?'Henter...':'Opdater'}
               </button>
             </div>
+
+            {/* ── Onboarding: ingen profil ──────────────────────────────── */}
+            {!profile && !cvBannerDismissed && (
+              <div className="fade" style={{borderBottom:'1px solid var(--accent-bd)',background:'var(--accent-bg)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+                <div style={{width:32,height:32,background:'var(--navy)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Ic n="upload" s={15} style={{color:'#fff'}}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:13,color:'var(--navy)',marginBottom:2}}>Upload dit CV for personlig jobmatching</div>
+                  <div style={{fontSize:12,color:'var(--muted)',lineHeight:1.4}}>Jobr rangerer job efter dine kompetencer og giver dig en match-score på hvert opslag.</div>
+                </div>
+                <button onClick={onReupload}
+                  style={{padding:'7px 16px',background:'var(--navy)',color:'#fff',fontSize:12,fontWeight:700,letterSpacing:'.05em',textTransform:'uppercase',flexShrink:0,whiteSpace:'nowrap'}}>
+                  Upload CV
+                </button>
+                <button onClick={()=>setCvBannerDismissed(true)}
+                  style={{fontSize:18,lineHeight:1,color:'var(--muted)',padding:'0 4px',flexShrink:0,background:'none',border:'none',cursor:'pointer'}}>
+                  ×
+                </button>
+              </div>
+            )}
 
             {/* Job list */}
             <div style={{flex:1,overflowY:'auto'}}>
@@ -3664,20 +3777,11 @@ const App = () => {
   const loadJobs = useCallback(async (reset=false) => {
     setJobsLoading(true);
     try {
-      const pages = 3; // 3 parallelle kald = ~60-90 jobs
-      const offsets = Array.from({length: pages}, (_, i) => i * 20);
-      const results = await Promise.allSettled(
-        offsets.map(offset => fetchJobnetBrowser(offset))
-      );
-      const all = results
-        .filter(r => r.status === 'fulfilled' && r.value?.jobs?.length)
-        .flatMap(r => r.value.jobs);
-      const total = results.find(r => r.status === 'fulfilled')?.value?.total || all.length;
-
-      if (all.length > 0) {
-        // Dedupliker på id
+      // Bulk-fetch: ~300 job i ét kald, cached 1 time på Railway
+      const { jobs, total } = await fetchAllJobs();
+      if (jobs.length > 0) {
         const seen = new Set();
-        const unique = all.filter(j => { if (seen.has(j.id)) return false; seen.add(j.id); return true; });
+        const unique = jobs.filter(j => { if (seen.has(j.id)) return false; seen.add(j.id); return true; });
         setJobsData(unique);
         setJobsLoaded(true);
         setJobsTotal(total);
