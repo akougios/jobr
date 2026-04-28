@@ -296,7 +296,7 @@ def fetch_adzuna_page(offset=0, search="", per_page=50):
     return jobs, None, total
 
 def fetch_bulk_jobs():
-    """Hent ~300 unikke job via parallelle Adzuna-søgninger. Caches 1 time."""
+    """Hent job via Adzuna (max 8 requests/dag) + Jobnet fallback. Caches 24h."""
     global _bulk_cache
     now = time.time()
     if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
@@ -304,29 +304,32 @@ def fetch_bulk_jobs():
         return _bulk_cache["jobs"]
 
     import concurrent.futures
-    seen     = set()
-    all_jobs = []
+    seen      = set()
+    all_jobs  = []
+    az_errors = []
+
+    # Maks 8 Adzuna-requests: 1 side per søgeterm (4 terms × 1 side = 4 req)
+    # + 2 ekstra generelle sider = 6 req total (sikkert under 250/md)
+    tasks = [
+        ("", 1), ("", 2),           # 2 generelle sider
+        ("developer", 1),
+        ("designer", 1),
+        ("marketing", 1),
+        ("økonomi", 1),
+    ]
 
     def safe_fetch(search, page):
-        try:
-            offset = (page - 1) * 50
-            jobs, err, _ = fetch_adzuna_page(offset, search, per_page=50)
-            return jobs
-        except Exception as e:
-            print(f"  [Bulk] Fejl ({search!r} s.{page}): {e}")
+        offset = (page - 1) * 50
+        jobs, err, _ = fetch_adzuna_page(offset, search, per_page=50)
+        if err:
+            az_errors.append(f"{search!r} s.{page}: {err}")
+            print(f"  [Bulk] ⚠️  Adzuna fejl ({search!r} s.{page}): {err}")
             return []
+        print(f"  [Bulk] Adzuna {search!r} s.{page} → {len(jobs)} job")
+        return jobs
 
-    tasks = []
-    # Side 1-10 af generel søgning → op til 500 job
-    for pg in range(1, 11):
-        tasks.append(("", pg))
-    # Side 1-2 af hver kategori-søgning → op til 1100 mere (duplikater fratrukket)
-    for term in ADZUNA_SEARCHES[1:]:
-        tasks.append((term, 1))
-        tasks.append((term, 2))
-
-    print(f"  [Bulk] Starter {len(tasks)} parallelle Adzuna-kald (mål: 1000+ job)…")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    print(f"  [Bulk] Starter {len(tasks)} Adzuna-kald…")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futures = {ex.submit(safe_fetch, t[0], t[1]): t for t in tasks}
         for f in concurrent.futures.as_completed(futures):
             for job in f.result():
@@ -334,11 +337,13 @@ def fetch_bulk_jobs():
                     seen.add(job["id"])
                     all_jobs.append(job)
 
-    # Supplement: hent Jobnet-sider parallelt for at fylde op mod 1000
-    if len(all_jobs) < 800:
-        print(f"  [Bulk] {len(all_jobs)} job fra Adzuna — tilføjer Jobnet…")
+    print(f"  [Bulk] {len(all_jobs)} job fra Adzuna ({len(az_errors)} fejl)")
+
+    # Supplement med Jobnet hvis Adzuna gav for lidt (quota overskredet / fejl)
+    if len(all_jobs) < 100:
+        print(f"  [Bulk] For få Adzuna-job — henter Jobnet som supplement…")
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(10)]
+            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(15)]
             for f in concurrent.futures.as_completed(jn_futures):
                 result = f.result()
                 jn_jobs = result[0] if isinstance(result, tuple) else []
@@ -346,11 +351,12 @@ def fetch_bulk_jobs():
                     if job["id"] not in seen:
                         seen.add(job["id"])
                         all_jobs.append(job)
+        print(f"  [Bulk] {len(all_jobs)} job totalt efter Jobnet-supplement")
 
     # Sortér nyeste først
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
-    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job hentet og cached i 6 timer")
-    _bulk_cache = {"jobs": all_jobs, "ts": now}
+    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job cached i 24 timer")
+    _bulk_cache = {"jobs": all_jobs, "ts": now, "errors": az_errors}
     return all_jobs
 
 
@@ -774,7 +780,14 @@ class Handler(SimpleHTTPRequestHandler):
         # Returnerer alle job i én bulk (cached 1 time) — bruges af frontend
         if parsed.path == "/api/jobs/all":
             jobs = fetch_bulk_jobs()
-            self._json({"jobs": jobs, "total": len(jobs), "source": "adzuna-bulk"})
+            resp = {
+                "jobs":   jobs,
+                "total":  len(jobs),
+                "source": "adzuna-bulk",
+                "cached": _bulk_cache.get("ts", 0) > 0,
+                "errors": _bulk_cache.get("errors", []),
+            }
+            self._json(resp)
             return
 
         # ── /api/jobs ──────────────────────────────────────────────────────
