@@ -7,7 +7,7 @@ Jobr.dk – Lokal server
 Start: python3 server.py
 """
 
-import subprocess, sys, os, json, time, webbrowser, traceback, re, warnings
+import subprocess, sys, os, json, time, webbrowser, traceback, re, warnings, tempfile, atexit
 from pathlib import Path
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from threading import Thread
@@ -82,6 +82,124 @@ def setup_ai():
             return None, None, f"Anthropic fejl: {e}"
 
     return None, None, "Ingen API-nøgle. Sæt OPENAI_API_KEY eller ANTHROPIC_API_KEY"
+
+
+# ─── STAR JobAnnonceService (mTLS certifikat-autentificering) ────────────────
+
+STAR_BASE = "https://job.starcloud.dk"   # Test-miljø — skift til job.bm.dk for produktion
+
+_star_session  = None
+_star_tmp_cert = None   # midlertidigt filnavn
+_star_tmp_key  = None
+
+def _setup_star_certs():
+    """Læs STAR_CERT + STAR_KEY fra Railway env-vars og skriv til temp-filer."""
+    global _star_tmp_cert, _star_tmp_key
+    cert_pem = os.environ.get("STAR_CERT", "").strip()
+    key_pem  = os.environ.get("STAR_KEY",  "").strip()
+    if not cert_pem or not key_pem:
+        return False, "STAR_CERT / STAR_KEY mangler i environment"
+    try:
+        tf_cert = tempfile.NamedTemporaryFile(suffix=".pem", delete=False, mode="w")
+        tf_cert.write(cert_pem); tf_cert.flush(); tf_cert.close()
+        _star_tmp_cert = tf_cert.name
+
+        tf_key = tempfile.NamedTemporaryFile(suffix=".pem", delete=False, mode="w")
+        tf_key.write(key_pem); tf_key.flush(); tf_key.close()
+        _star_tmp_key = tf_key.name
+
+        # Ryd op når processen lukker
+        atexit.register(lambda: [os.unlink(f) for f in [_star_tmp_cert, _star_tmp_key] if f and os.path.exists(f)])
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+def get_star_session():
+    global _star_session
+    if _star_session is not None:
+        return _star_session
+    import requests as req
+    ok, err = _setup_star_certs()
+    if not ok:
+        print(f"  [STAR] ⚠️  Certifikat ikke tilgængeligt: {err}")
+        return None
+    try:
+        _star_session = req.Session()
+        _star_session.cert    = (_star_tmp_cert, _star_tmp_key)
+        _star_session.verify  = False   # STARCLOUD bruger intern CA; sæt sti til STARCLOUD-CA.cer for fuld verifikation
+        _star_session.headers.update({"Accept": "application/json", "Content-Type": "application/json"})
+        print("  [STAR] ✅ mTLS-session klar")
+        return _star_session
+    except Exception as e:
+        print(f"  [STAR] Session-fejl: {e}")
+        return None
+
+def fetch_star_page(offset=0, search=""):
+    """Hent job fra STARs JobAnnonceService v2 via mTLS."""
+    session = get_star_session()
+    if not session:
+        return [], "STAR ikke konfigureret", 0
+    import requests as req
+    try:
+        # Jobnet-stil endpoint — justér hvis STAR's swagger viser et andet path
+        url = f"{STAR_BASE}/api/v1/jobopslag"
+        params = {"Offset": offset, "Antal": 20, "SortBy": "Oprettelsesdato"}
+        if search:
+            params["Soegning"] = search
+        print(f"  [STAR] GET {url} offset={offset}")
+        r = session.get(url, params=params, timeout=20)
+        print(f"  [STAR] HTTP {r.status_code}  body[:300]: {r.text[:300]}")
+        if r.status_code != 200:
+            return [], f"STAR HTTP {r.status_code}", 0
+        data = r.json()
+    except Exception as e:
+        return [], f"STAR fejl: {e}", 0
+
+    postings = (data.get("JobPositionPostings")
+             or data.get("jobPositionPostings")
+             or data.get("results")
+             or [])
+    jobs = []
+    for p in postings:
+        jid         = str(p.get("JobPositionPostingIdentifier") or p.get("id") or "")
+        title       = (p.get("PositionTitle") or p.get("title") or "").strip()
+        company     = (p.get("HiringOrgName") or p.get("company") or "Ukendt").strip()
+        city        = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or ""
+        region      = p.get("WorkPlaceRegionName") or ""
+        location    = ", ".join(filter(None, [city, region])) or "Danmark"
+        raw_desc    = (p.get("PresentationAgreement")
+                    or p.get("JobPositionPostingDescription")
+                    or p.get("description") or "")
+        description = clean_html(raw_desc)[:1500]
+        posted_raw  = p.get("PostingCreated") or p.get("created") or ""
+        deadline_raw= p.get("LastDateApplication") or ""
+        abroad      = bool(p.get("WorkPlaceAbroad"))
+        salary      = ""
+        m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
+        if m:
+            salary = f"{m.group(1)}–{m.group(2)} kr/md"
+        url_job = (p.get("JobPostingUrl")
+                or f"https://job.jobnet.dk/CV/FindWork/Details/{jid}")
+        jobs.append({
+            "id":          f"star-{jid}",
+            "title":       title,
+            "company":     company,
+            "location":    location,
+            "type":        p.get("WorkHours") or "Fuldtid",
+            "workMode":    "Remote" if abroad else "Kontor",
+            "salary":      salary,
+            "description": description,
+            "keywords":    extract_kws(title + " " + description),
+            "posted":      parse_date(posted_raw),
+            "deadline":    deadline_raw[:10] if deadline_raw else "",
+            "url":         url_job,
+            "source":      "jobnet.dk",
+            "sourceLabel": "Jobnet",
+            "industry":    get_industry(title, description),
+        })
+
+    total = data.get("TotalResultCount") or data.get("total") or len(jobs)
+    return jobs, None, total
 
 
 # ─── Adzuna API ───────────────────────────────────────────────────────────────
@@ -569,13 +687,21 @@ class Handler(SimpleHTTPRequestHandler):
             offset = int(qs.get("offset", ["0"])[0])
             search = qs.get("q", [""])[0]
 
-            # Prøv Adzuna først (officiel API, ingen bot-blokering)
-            jobs, err, total = fetch_adzuna_page(offset, search)
-            source = "adzuna"
+            # 1. Prøv STAR JobAnnonceService (mTLS — friske danske job)
+            jobs, err, total = fetch_star_page(offset, search)
+            source = "star"
 
-            # Fallback til Jobnet hvis Adzuna fejler
+            # 2. Fallback: Adzuna
             if err or not jobs:
-                print(f"  [Adzuna] Fejl: {err} – prøver Jobnet som fallback")
+                if err:
+                    print(f"  [STAR] Fejl: {err} – falder tilbage til Adzuna")
+                jobs, err, total = fetch_adzuna_page(offset, search)
+                source = "adzuna"
+
+            # 3. Fallback: Jobnet browser-scrape
+            if err or not jobs:
+                if err:
+                    print(f"  [Adzuna] Fejl: {err} – prøver Jobnet som fallback")
                 result = fetch_jobnet_page(offset, search)
                 if len(result) == 3:
                     jobs, err, total = result
@@ -587,6 +713,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json({"error": err, "jobs": [], "total": 0}, 502)
             else:
                 self._json({"jobs": jobs, "total": total or len(jobs), "offset": offset, "source": source})
+            return
+
+        # ── /api/star-test ────────────────────────────────────────────────
+        if parsed.path == "/api/star-test":
+            session = get_star_session()
+            if not session:
+                self._json({"ok": False, "error": "Certifikater mangler — sæt STAR_CERT og STAR_KEY i Railway"})
+                return
+            import requests as req
+            try:
+                url = f"{STAR_BASE}/api/v1/jobopslag"
+                r = session.get(url, params={"Offset": 0, "Antal": 1}, timeout=15)
+                self._json({"ok": r.status_code == 200, "status": r.status_code, "body": r.text[:500], "url": url})
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)})
             return
 
         # ── /api/status ───────────────────────────────────────────────────
@@ -697,6 +838,106 @@ class Handler(SimpleHTTPRequestHandler):
                 n = len(result.get("required_skills", []))
                 print(f"  [AI] ✅ Job-analyse: {n} required skills")
                 self._json(result)
+            except Exception as e:
+                traceback.print_exc()
+                self._json({"error": str(e)}, 500)
+            return
+
+        # ── /api/generate-letter ───────────────────────────────────────
+        if urlparse(self.path).path == "/api/generate-letter":
+            try:
+                length  = int(self.headers.get("Content-Length", 0))
+                body    = json.loads(self.rfile.read(length).decode())
+                profile = body.get("profile", {})
+                job     = body.get("job", {})
+                match   = body.get("match", {})
+
+                if not Handler.ai_client:
+                    self._json({"error": "Ingen AI-klient"}, 501); return
+
+                name         = (profile.get("name") or "").strip()
+                role_family  = profile.get("roleFamily", "")
+                seniority    = profile.get("seniority", "")
+                years        = profile.get("years") or 0
+                education    = profile.get("education", "") or ""
+                skills_raw   = profile.get("skills") or []
+                explicit_sk  = [s.get("name","") for s in skills_raw if not s.get("inferred")][:10]
+                inferred_sk  = [s.get("name","") for s in skills_raw if s.get("inferred")][:5]
+                strengths    = (profile.get("strengths") or [])[:3]
+                summary_line = profile.get("summary", "") or ""
+
+                job_title    = job.get("title", "")
+                job_company  = job.get("company", "")
+                job_industry = job.get("industry", "")
+                job_desc     = (job.get("description") or "")[:700]
+                job_kws      = (job.get("keywords") or [])[:6]
+                job_mode     = job.get("workMode", "")
+
+                matched   = (match.get("matched") or [])[:7]
+                gaps      = (match.get("gaps") or [])[:3]
+                key_reqs  = (match.get("keyRequirements") or [])[:4]
+
+                years_str = f"{years}+ år" if years else "relevant"
+                gap_str   = f"Jeg arbejder desuden med at styrke mine kompetencer inden for {', '.join(gaps[:2])}." if gaps else ""
+                strength_str = "; ".join(strengths[:2]) if strengths else ""
+
+                prompt = f"""Skriv et personligt og overbevisende ansøgningsbrev på dansk til følgende stilling.
+
+KANDIDATPROFIL:
+- Fagområde: {role_family}
+- Niveau: {seniority}, {years_str} erhvervserfaring
+- Uddannelse: {education}
+- Eksplicitte kompetencer: {', '.join(explicit_sk)}
+- Udledte kompetencer: {', '.join(inferred_sk)}
+- Resumé: {summary_line}
+- Konkrete styrker: {strength_str}
+
+STILLINGEN:
+- Titel: {job_title}
+- Virksomhed: {job_company}
+- Branche: {job_industry}
+- Arbejdsform: {job_mode}
+- Nøgleord fra opslag: {', '.join(job_kws)}
+- Jobopslag (uddrag): {job_desc}
+
+MATCH-DATA:
+- Kompetencer der matcher: {', '.join(matched) if matched else 'se profil'}
+- Kompetencegab: {', '.join(gaps) if gaps else 'ingen væsentlige'}
+- Vigtigste krav fra opslag: {'; '.join(key_reqs) if key_reqs else 'se opslag'}
+
+INSTRUKTIONER:
+- Skriv 3-4 afsnit, i alt ca. 260-320 ord
+- Start med "Kære {job_company},"
+- Afsnit 1: En fængende åbning (INGEN klichéer som "Jeg søger hermed" eller "Jeg har altid brændt for"). Forbind kandidatens konkrete baggrund direkte til stillingen.
+- Afsnit 2: Konkrete kompetencer og erfaringer der er relevante — brug de matchende kompetencer og styrker.
+- Afsnit 3: Hvad der tiltrækker kandidaten ved netop denne virksomhed/branche — brug jobopslaget.
+- Afsnit 4 (2 linjer): {gap_str} Afslut med invitation til samtale.
+- Slut med: "Med venlig hilsen\\n\\n{name if name else '[Dit navn]'}"
+- Skriv i første person som om du er kandidaten
+- Undgå: "dedikeret medarbejder", "passioneret", "jeg vil se frem til", generiske fraser
+- Vær specifik, selvsikker og menneskelig"""
+
+                print(f"  [Letter] Genererer ansøgning til '{job_title}' @ '{job_company}'…")
+
+                if Handler.ai_type == "openai":
+                    resp = Handler.ai_client.chat.completions.create(
+                        model="gpt-4o-mini", max_tokens=750, temperature=0.72,
+                        messages=[
+                            {"role": "system", "content": "Du er ekspert i karriererådgivning og ansøgningsbreve på dansk. Du skriver konkret, personlig og overbevisende. Ingen tomme fraser eller klichéer."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    letter = resp.choices[0].message.content.strip()
+                else:
+                    resp = Handler.ai_client.messages.create(
+                        model="claude-haiku-4-5-20251001", max_tokens=750,
+                        system="Du er ekspert i karriererådgivning og ansøgningsbreve på dansk. Du skriver konkret, personlig og overbevisende. Ingen tomme fraser eller klichéer.",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    letter = resp.content[0].text.strip()
+
+                print(f"  [Letter] ✅ {len(letter)} tegn genereret")
+                self._json({"letter": letter})
             except Exception as e:
                 traceback.print_exc()
                 self._json({"error": str(e)}, 500)
