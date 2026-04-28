@@ -860,8 +860,8 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── /api/cache-reset ──────────────────────────────────────────────
         if parsed.path == "/api/cache-reset":
-            global _bulk_cache
-            _bulk_cache = {"jobs": [], "ts": 0}
+            _bulk_cache.clear()
+            _bulk_cache.update({"jobs": [], "ts": 0})
             self._json({"ok": True, "msg": "Bulk-cache nulstillet — næste /api/jobs/all henter friske data"})
             return
 
