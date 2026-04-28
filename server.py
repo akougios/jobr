@@ -209,19 +209,16 @@ ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "c5a493c6da98b7710733944cf74b9
 
 # Søgetermer der dækker det danske jobmarked bredt
 ADZUNA_SEARCHES = [
-    "",                  # Alle job
-    "software developer",
-    "data analyst",
+    "",               # Alle job — 5 sider
+    "developer",
     "designer",
     "marketing",
-    "projektleder",
-    "salgskonsulent",
-    "ingeniør",
 ]
 
-# ── Bulk-cache: opdateres max 1 gang i timen ───────────────────────────────
+# ── Bulk-cache: opdateres max 1 gang i døgnet ─────────────────────────────
+# Gratis Adzuna-plan: ~250 requests/måned → maks 8 requests/dag
 _bulk_cache = {"jobs": [], "ts": 0}
-BULK_TTL    = 3600  # sekunder
+BULK_TTL    = 86400  # 24 timer
 
 def detect_work_mode(title, description):
     """Detektér Remote / Hybrid / Kontor fra tekst."""
@@ -320,15 +317,16 @@ def fetch_bulk_jobs():
             return []
 
     tasks = []
-    # Side 1-4 af generel søgning
-    for pg in range(1, 5):
+    # Side 1-10 af generel søgning → op til 500 job
+    for pg in range(1, 11):
         tasks.append(("", pg))
-    # Side 1 af kategori-søgninger
+    # Side 1-2 af hver kategori-søgning → op til 1100 mere (duplikater fratrukket)
     for term in ADZUNA_SEARCHES[1:]:
         tasks.append((term, 1))
+        tasks.append((term, 2))
 
-    print(f"  [Bulk] Starter {len(tasks)} parallelle Adzuna-kald…")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+    print(f"  [Bulk] Starter {len(tasks)} parallelle Adzuna-kald (mål: 1000+ job)…")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         futures = {ex.submit(safe_fetch, t[0], t[1]): t for t in tasks}
         for f in concurrent.futures.as_completed(futures):
             for job in f.result():
@@ -336,9 +334,22 @@ def fetch_bulk_jobs():
                     seen.add(job["id"])
                     all_jobs.append(job)
 
+    # Supplement: hent Jobnet-sider parallelt for at fylde op mod 1000
+    if len(all_jobs) < 800:
+        print(f"  [Bulk] {len(all_jobs)} job fra Adzuna — tilføjer Jobnet…")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(10)]
+            for f in concurrent.futures.as_completed(jn_futures):
+                result = f.result()
+                jn_jobs = result[0] if isinstance(result, tuple) else []
+                for job in jn_jobs:
+                    if job["id"] not in seen:
+                        seen.add(job["id"])
+                        all_jobs.append(job)
+
     # Sortér nyeste først
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
-    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job hentet")
+    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job hentet og cached i 6 timer")
     _bulk_cache = {"jobs": all_jobs, "ts": now}
     return all_jobs
 
