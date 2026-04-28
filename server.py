@@ -295,8 +295,81 @@ def fetch_adzuna_page(offset=0, search="", per_page=50):
     total = data.get("count") or len(jobs)
     return jobs, None, total
 
+def fetch_jobnet_bulk(pages=20):
+    """Hent mange job fra Jobnet parallelt — bruges som primary kilde ved Adzuna-fejl."""
+    import concurrent.futures, requests as req
+
+    def fetch_page(offset):
+        try:
+            # Direkte request uden session — Jobnet API er offentligt tilgængeligt
+            headers = {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/json, */*",
+                "Accept-Language": "da-DK,da;q=0.9,en;q=0.8",
+                "Referer": "https://job.jobnet.dk/CV/FindWork",
+                "X-Requested-With": "XMLHttpRequest",
+            }
+            r = req.get(
+                "https://job.jobnet.dk/CV/FindWork/Search",
+                params={"Offset": offset, "SortValue": "NewestPosted", "widk": "true"},
+                headers=headers,
+                timeout=15,
+                verify=False,
+            )
+            if r.status_code != 200:
+                print(f"  [Jobnet] HTTP {r.status_code} offset={offset}")
+                return []
+            data = r.json()
+            postings = data.get("JobPositionPostings") or []
+            jobs = []
+            for p in postings:
+                jid   = str(p.get("JobPositionPostingIdentifier", ""))
+                title = (p.get("PositionTitle") or "").strip()
+                if not title: continue
+                company     = (p.get("HiringOrgName") or "").strip()
+                city        = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or ""
+                region      = p.get("WorkPlaceRegionName") or ""
+                location    = ", ".join(filter(None, [city, region])) or "Danmark"
+                raw_desc    = p.get("PresentationAgreement") or p.get("JobPositionPostingDescription") or ""
+                description = clean_html(raw_desc)[:1500]
+                posted_raw  = p.get("PostingCreated") or ""
+                deadline_raw= p.get("LastDateApplication") or ""
+                salary = ""
+                m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
+                if m: salary = f"{m.group(1)}–{m.group(2)} kr/md"
+                jobs.append({
+                    "id": f"jn-{jid}", "title": title, "company": company,
+                    "location": location, "type": p.get("WorkHours") or "Fuldtid",
+                    "workMode": detect_work_mode(title, description),
+                    "salary": salary, "description": description,
+                    "keywords": extract_kws(title + " " + description),
+                    "posted": parse_date(posted_raw),
+                    "deadline": deadline_raw[:10] if deadline_raw else "",
+                    "url": f"https://job.jobnet.dk/CV/FindWork/Details/{jid}",
+                    "source": "jobnet.dk", "sourceLabel": "Jobnet",
+                    "industry": get_industry(title, description),
+                })
+            return jobs
+        except Exception as e:
+            print(f"  [Jobnet] Fejl offset={offset}: {e}")
+            return []
+
+    offsets = [i * 20 for i in range(pages)]
+    all_jobs = []
+    seen = set()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        futures = [ex.submit(fetch_page, off) for off in offsets]
+        for f in concurrent.futures.as_completed(futures):
+            for job in f.result():
+                if job["id"] not in seen:
+                    seen.add(job["id"])
+                    all_jobs.append(job)
+    print(f"  [Jobnet] {len(all_jobs)} job hentet ({pages} sider)")
+    return all_jobs
+
+
 def fetch_bulk_jobs():
-    """Hent job via Adzuna (max 8 requests/dag) + Jobnet fallback. Caches 24h."""
+    """Hent job: prøv Adzuna (maks 6 req/dag), ellers Jobnet. Caches 24h."""
     global _bulk_cache
     now = time.time()
     if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
@@ -308,55 +381,51 @@ def fetch_bulk_jobs():
     all_jobs  = []
     az_errors = []
 
-    # Maks 8 Adzuna-requests: 1 side per søgeterm (4 terms × 1 side = 4 req)
-    # + 2 ekstra generelle sider = 6 req total (sikkert under 250/md)
-    tasks = [
-        ("", 1), ("", 2),           # 2 generelle sider
-        ("developer", 1),
-        ("designer", 1),
-        ("marketing", 1),
-        ("økonomi", 1),
-    ]
+    # Prøv Adzuna med maks 6 requests (kun generelle sider — kategori-søgning giver 404 på DK)
+    az_tasks = [("", 1), ("", 2), ("", 3), ("", 4), ("", 5), ("", 6)]
 
-    def safe_fetch(search, page):
-        offset = (page - 1) * 50
-        jobs, err, _ = fetch_adzuna_page(offset, search, per_page=50)
+    def safe_az(page):
+        jobs, err, _ = fetch_adzuna_page((page-1)*50, "", per_page=50)
         if err:
-            az_errors.append(f"{search!r} s.{page}: {err}")
-            print(f"  [Bulk] ⚠️  Adzuna fejl ({search!r} s.{page}): {err}")
+            az_errors.append(f"s.{page}: {err}")
+            print(f"  [Bulk] ⚠️  Adzuna s.{page}: {err}")
             return []
-        print(f"  [Bulk] Adzuna {search!r} s.{page} → {len(jobs)} job")
+        print(f"  [Bulk] Adzuna s.{page} → {len(jobs)} job")
         return jobs
 
-    print(f"  [Bulk] Starter {len(tasks)} Adzuna-kald…")
+    print("  [Bulk] Prøver Adzuna…")
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-        futures = {ex.submit(safe_fetch, t[0], t[1]): t for t in tasks}
-        for f in concurrent.futures.as_completed(futures):
-            for job in f.result():
+        for jobs in ex.map(safe_az, range(1, 7)):
+            for job in jobs:
                 if job["id"] not in seen:
                     seen.add(job["id"])
                     all_jobs.append(job)
 
-    print(f"  [Bulk] {len(all_jobs)} job fra Adzuna ({len(az_errors)} fejl)")
+    adzuna_ok = len(all_jobs) > 0
+    print(f"  [Bulk] Adzuna: {len(all_jobs)} job, {len(az_errors)} fejl")
 
-    # Supplement med Jobnet hvis Adzuna gav for lidt (quota overskredet / fejl)
-    if len(all_jobs) < 100:
-        print(f"  [Bulk] For få Adzuna-job — henter Jobnet som supplement…")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(15)]
-            for f in concurrent.futures.as_completed(jn_futures):
-                result = f.result()
-                jn_jobs = result[0] if isinstance(result, tuple) else []
-                for job in jn_jobs:
-                    if job["id"] not in seen:
-                        seen.add(job["id"])
-                        all_jobs.append(job)
-        print(f"  [Bulk] {len(all_jobs)} job totalt efter Jobnet-supplement")
+    # Hvis Adzuna er nede/quota overskredet → brug Jobnet som primær kilde
+    if not adzuna_ok:
+        print("  [Bulk] Adzuna utilgængelig — skifter til Jobnet…")
+        jn_jobs = fetch_jobnet_bulk(pages=25)  # 25 sider × ~20 job = ~500 job
+        for job in jn_jobs:
+            if job["id"] not in seen:
+                seen.add(job["id"])
+                all_jobs.append(job)
+    elif len(all_jobs) < 200:
+        # Supplement med Jobnet hvis Adzuna gav for lidt
+        print(f"  [Bulk] Kun {len(all_jobs)} Adzuna-job — tilføjer Jobnet…")
+        jn_jobs = fetch_jobnet_bulk(pages=15)
+        for job in jn_jobs:
+            if job["id"] not in seen:
+                seen.add(job["id"])
+                all_jobs.append(job)
 
     # Sortér nyeste først
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
-    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job cached i 24 timer")
-    _bulk_cache = {"jobs": all_jobs, "ts": now, "errors": az_errors}
+    source = "adzuna+jobnet" if adzuna_ok else "jobnet"
+    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job cached 24h (kilde: {source})")
+    _bulk_cache = {"jobs": all_jobs, "ts": now, "errors": az_errors, "source": source}
     return all_jobs
 
 
@@ -783,11 +852,17 @@ class Handler(SimpleHTTPRequestHandler):
             resp = {
                 "jobs":   jobs,
                 "total":  len(jobs),
-                "source": "adzuna-bulk",
-                "cached": _bulk_cache.get("ts", 0) > 0,
+                "source": _bulk_cache.get("source", "unknown"),
                 "errors": _bulk_cache.get("errors", []),
             }
             self._json(resp)
+            return
+
+        # ── /api/cache-reset ──────────────────────────────────────────────
+        if parsed.path == "/api/cache-reset":
+            global _bulk_cache
+            _bulk_cache = {"jobs": [], "ts": 0}
+            self._json({"ok": True, "msg": "Bulk-cache nulstillet — næste /api/jobs/all henter friske data"})
             return
 
         # ── /api/jobs ──────────────────────────────────────────────────────
