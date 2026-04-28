@@ -202,117 +202,6 @@ def fetch_star_page(offset=0, search=""):
     return jobs, None, total
 
 
-# ─── Jobindex RSS ────────────────────────────────────────────────────────────
-
-JOBINDEX_RSS_FEEDS = [
-    ("https://www.jobindex.dk/jobsoegning.rss",                    "Alle"),
-    ("https://www.jobindex.dk/jobsoegning/it.rss",                 "IT"),
-    ("https://www.jobindex.dk/jobsoegning/oekonomi-regnskab.rss",  "Finans"),
-    ("https://www.jobindex.dk/jobsoegning/marketing-kommunikation.rss", "Marketing"),
-    ("https://www.jobindex.dk/jobsoegning/salg.rss",               "Salg"),
-    ("https://www.jobindex.dk/jobsoegning/ledelse-strategi.rss",   "Ledelse"),
-    ("https://www.jobindex.dk/jobsoegning/engineering.rss",        "Engineering"),
-    ("https://www.jobindex.dk/jobsoegning/hr.rss",                 "HR"),
-]
-
-def parse_rss_date(s):
-    """Parser RSS pub-dato ('Tue, 28 Apr 2026 12:00:00 +0200') til relativ tekst."""
-    if not s: return ""
-    try:
-        from datetime import datetime, timezone
-        for fmt in ("%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z"):
-            try:
-                dt = datetime.strptime(s.strip(), fmt)
-                d  = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).days
-                if d == 0: return "I dag"
-                if d == 1: return "I går"
-                if d < 7:  return f"{d} dage siden"
-                if d < 14: return "1 uge siden"
-                return f"{d//7} uger siden"
-            except ValueError:
-                continue
-    except Exception:
-        pass
-    return ""
-
-def fetch_jobindex_rss():
-    """Hent job fra Jobindex RSS feeds — ingen auth, ingen quota."""
-    import xml.etree.ElementTree as ET
-    import concurrent.futures
-    import requests as req
-
-    all_jobs = []
-    seen     = set()
-
-    def fetch_feed(url, category):
-        try:
-            r = req.get(url, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/124.0.0.0",
-                "Accept": "application/rss+xml, application/xml, */*",
-            })
-            if r.status_code != 200:
-                print(f"  [Jobindex] {category} HTTP {r.status_code}")
-                return []
-            root    = ET.fromstring(r.content)
-            channel = root.find("channel")
-            if not channel:
-                return []
-            jobs = []
-            for item in channel.findall("item"):
-                link  = (item.findtext("link") or "").strip()
-                if not link: continue
-                job_id = f"ji-{abs(hash(link)) % 10**8}"
-                if job_id in seen: continue
-                seen.add(job_id)
-
-                raw_title = (item.findtext("title") or "").strip()
-                # Jobindex format: "Jobtitel - Virksomhed" eller "Jobtitel hos Virksomhed"
-                title   = raw_title
-                company = "Ukendt"
-                for sep in [" - ", " hos ", " at "]:
-                    if sep in raw_title:
-                        parts   = raw_title.split(sep, 1)
-                        title   = parts[0].strip()
-                        company = parts[1].strip()
-                        break
-
-                desc     = clean_html(item.findtext("description") or "")[:1500]
-                pub_date = item.findtext("pubDate") or ""
-                jobs.append({
-                    "id":          job_id,
-                    "title":       title,
-                    "company":     company,
-                    "location":    "Danmark",
-                    "type":        "Fuldtid",
-                    "workMode":    detect_work_mode(title, desc),
-                    "salary":      "",
-                    "description": desc,
-                    "keywords":    extract_kws(title + " " + desc),
-                    "posted":      parse_rss_date(pub_date),
-                    "deadline":    "",
-                    "url":         link,
-                    "source":      "jobindex.dk",
-                    "sourceLabel": "Jobindex",
-                    "industry":    get_industry(title, desc),
-                })
-            print(f"  [Jobindex] {category} → {len(jobs)} job")
-            return jobs
-        except Exception as e:
-            print(f"  [Jobindex] {category} fejl: {e}")
-            return []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        futures = [ex.submit(fetch_feed, url, cat) for url, cat in JOBINDEX_RSS_FEEDS]
-        for f in concurrent.futures.as_completed(futures):
-            for job in f.result():
-                if job["id"] not in seen:
-                    seen.add(job["id"])
-                    all_jobs.append(job)
-
-    print(f"  [Jobindex] Total: {len(all_jobs)} unikke job fra RSS")
-    return all_jobs
-
-
 # ─── Adzuna API ───────────────────────────────────────────────────────────────
 
 ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID",  "89154cc5")
@@ -406,81 +295,8 @@ def fetch_adzuna_page(offset=0, search="", per_page=50):
     total = data.get("count") or len(jobs)
     return jobs, None, total
 
-def fetch_jobnet_bulk(pages=20):
-    """Hent mange job fra Jobnet parallelt — bruges som primary kilde ved Adzuna-fejl."""
-    import concurrent.futures, requests as req
-
-    def fetch_page(offset):
-        try:
-            # Direkte request uden session — Jobnet API er offentligt tilgængeligt
-            headers = {
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-                "Accept": "application/json, */*",
-                "Accept-Language": "da-DK,da;q=0.9,en;q=0.8",
-                "Referer": "https://job.jobnet.dk/CV/FindWork",
-                "X-Requested-With": "XMLHttpRequest",
-            }
-            r = req.get(
-                "https://job.jobnet.dk/CV/FindWork/Search",
-                params={"Offset": offset, "SortValue": "NewestPosted", "widk": "true"},
-                headers=headers,
-                timeout=15,
-                verify=False,
-            )
-            if r.status_code != 200:
-                print(f"  [Jobnet] HTTP {r.status_code} offset={offset}")
-                return []
-            data = r.json()
-            postings = data.get("JobPositionPostings") or []
-            jobs = []
-            for p in postings:
-                jid   = str(p.get("JobPositionPostingIdentifier", ""))
-                title = (p.get("PositionTitle") or "").strip()
-                if not title: continue
-                company     = (p.get("HiringOrgName") or "").strip()
-                city        = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or ""
-                region      = p.get("WorkPlaceRegionName") or ""
-                location    = ", ".join(filter(None, [city, region])) or "Danmark"
-                raw_desc    = p.get("PresentationAgreement") or p.get("JobPositionPostingDescription") or ""
-                description = clean_html(raw_desc)[:1500]
-                posted_raw  = p.get("PostingCreated") or ""
-                deadline_raw= p.get("LastDateApplication") or ""
-                salary = ""
-                m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
-                if m: salary = f"{m.group(1)}–{m.group(2)} kr/md"
-                jobs.append({
-                    "id": f"jn-{jid}", "title": title, "company": company,
-                    "location": location, "type": p.get("WorkHours") or "Fuldtid",
-                    "workMode": detect_work_mode(title, description),
-                    "salary": salary, "description": description,
-                    "keywords": extract_kws(title + " " + description),
-                    "posted": parse_date(posted_raw),
-                    "deadline": deadline_raw[:10] if deadline_raw else "",
-                    "url": f"https://job.jobnet.dk/CV/FindWork/Details/{jid}",
-                    "source": "jobnet.dk", "sourceLabel": "Jobnet",
-                    "industry": get_industry(title, description),
-                })
-            return jobs
-        except Exception as e:
-            print(f"  [Jobnet] Fejl offset={offset}: {e}")
-            return []
-
-    offsets = [i * 20 for i in range(pages)]
-    all_jobs = []
-    seen = set()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        futures = [ex.submit(fetch_page, off) for off in offsets]
-        for f in concurrent.futures.as_completed(futures):
-            for job in f.result():
-                if job["id"] not in seen:
-                    seen.add(job["id"])
-                    all_jobs.append(job)
-    print(f"  [Jobnet] {len(all_jobs)} job hentet ({pages} sider)")
-    return all_jobs
-
-
 def fetch_bulk_jobs():
-    """Hent job: Jobindex RSS (primær) + Adzuna hvis quota ok. Caches 24h."""
+    """Hent ~200 job fra Adzuna (4 sider × 50). Caches 24h. Jobnet fallback."""
     global _bulk_cache
     now = time.time()
     if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
@@ -492,37 +308,39 @@ def fetch_bulk_jobs():
     all_jobs  = []
     az_errors = []
 
-    # ── 1. Jobindex RSS (primær — ingen quota, ingen auth) ─────────────────
-    print("  [Bulk] Henter Jobindex RSS…")
-    for job in fetch_jobindex_rss():
-        if job["id"] not in seen:
-            seen.add(job["id"])
-            all_jobs.append(job)
-    print(f"  [Bulk] {len(all_jobs)} job fra Jobindex RSS")
-
-    # ── 2. Adzuna supplement (hvis quota ikke overskredet) ─────────────────
     def safe_az(page):
         jobs, err, _ = fetch_adzuna_page((page - 1) * 50, "", per_page=50)
         if err:
             az_errors.append(f"s.{page}: {err}")
+            print(f"  [Bulk] Adzuna s.{page}: {err}")
             return []
+        print(f"  [Bulk] Adzuna s.{page} → {len(jobs)} job")
         return jobs
 
-    print("  [Bulk] Prøver Adzuna supplement (2 sider)…")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        for jobs in ex.map(safe_az, [1, 2]):
+    # 4 sider × 50 job = 200 job, 4 requests per dag
+    print("  [Bulk] Henter Adzuna (4 sider)…")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        for jobs in ex.map(safe_az, [1, 2, 3, 4]):
             for job in jobs:
                 if job["id"] not in seen:
                     seen.add(job["id"])
                     all_jobs.append(job)
 
-    az_ok = not az_errors or len(az_errors) < 2
-    source = ("jobindex+adzuna" if az_ok else "jobindex")
-    print(f"  [Bulk] Adzuna: {len(az_errors)} fejl — kilde: {source}")
+    # Fallback: Jobnet hvis Adzuna fejler
+    if not all_jobs:
+        print("  [Bulk] Adzuna utilgængelig — prøver Jobnet…")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(10)]
+            for f in concurrent.futures.as_completed(jn_futures):
+                jn_jobs = f.result()[0] if isinstance(f.result(), tuple) else []
+                for job in jn_jobs:
+                    if job["id"] not in seen:
+                        seen.add(job["id"])
+                        all_jobs.append(job)
 
-    # Sortér nyeste først
+    source = "adzuna" if not az_errors else ("adzuna+jobnet" if all_jobs else "jobnet")
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
-    print(f"  [Bulk] ✅ {len(all_jobs)} unikke job cached 24h")
+    print(f"  [Bulk] ✅ {len(all_jobs)} job cached 24h (kilde: {source})")
     _bulk_cache.clear()
     _bulk_cache.update({"jobs": all_jobs, "ts": now, "errors": az_errors, "source": source})
     return all_jobs
