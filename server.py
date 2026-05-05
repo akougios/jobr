@@ -172,10 +172,10 @@ def parse_star_posting(p):
         "industry":    get_industry(title, description),
     }
 
-def fetch_star_jobs(page_size=100, max_pages=5):
+def fetch_star_jobs(page_size=100, max_pages=10):
     """
-    Hent jobannoncer via STAR JobAnnonceService v2 mTLS.
-    Bruger SoegJobannoncer (søg/filtrer) + GetJobannoncer (hent detaljer).
+    Hent jobannoncer via STAR JobAnnonceService v2 (mTLS).
+    Prøver SoegJobannoncer og GetJobannoncer i forskellige formater.
     """
     session = get_star_session()
     if not session:
@@ -185,81 +185,96 @@ def fetch_star_jobs(page_size=100, max_pages=5):
     seen     = set()
     total    = 0
 
+    # Alle kendte endpoint-varianter — prøv den første der virker
+    SEARCH_ENDPOINTS = [
+        ("POST", f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer"),
+        ("GET",  f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer"),
+        ("GET",  f"{STAR_BASE}/v2/Jobannonce/GetJobannoncer"),
+        ("GET",  f"{STAR_BASE}/v2/Jobannonce"),
+    ]
+
+    working_method = None
+    working_url    = None
+
+    # Find første endpoint der svarer 200
+    for method, url in SEARCH_ENDPOINTS:
+        try:
+            if method == "POST":
+                r = session.post(url, json={"PageSize": 1, "PageNumber": 1}, timeout=15)
+            else:
+                r = session.get(url, params={"pageSize": 1, "pageNumber": 1}, timeout=15)
+            print(f"  [STAR] {method} {url} → HTTP {r.status_code} ({len(r.content)} bytes)")
+            if r.status_code == 200:
+                working_method = method
+                working_url    = url
+                break
+        except Exception as e:
+            print(f"  [STAR] {method} {url} → fejl: {e}")
+
+    if not working_url:
+        return [], "STAR: ingen endpoints svarede 200", 0
+
+    print(f"  [STAR] Bruger {working_method} {working_url}")
+
     for page in range(1, max_pages + 1):
         try:
-            # ── Søg jobannoncer (returnerer ID-liste + metadata) ──────────
-            search_url = f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer"
-            body = {
-                "PageSize":   page_size,
-                "PageNumber": page,
-                "SortBy":     "PostingCreated",
-                "SortOrder":  "Descending",
-            }
-            print(f"  [STAR] POST SoegJobannoncer side {page}…")
-            r = session.post(search_url, json=body, timeout=30)
-            print(f"  [STAR] HTTP {r.status_code}  body[:200]: {r.text[:200]}")
+            if working_method == "POST":
+                r = session.post(working_url, json={
+                    "PageSize": page_size, "PageNumber": page,
+                    "SortBy": "PostingCreated", "SortOrder": "Descending"
+                }, timeout=30)
+            else:
+                r = session.get(working_url, params={
+                    "pageSize": page_size, "pageNumber": page
+                }, timeout=30)
 
             if r.status_code != 200:
-                # Prøv GET i stedet (API kan variere)
-                r = session.get(search_url, params={"pageSize": page_size, "pageNumber": page}, timeout=30)
-                print(f"  [STAR] GET fallback HTTP {r.status_code}  body[:200]: {r.text[:200]}")
-                if r.status_code != 200:
-                    break
+                print(f"  [STAR] Side {page}: HTTP {r.status_code}")
+                break
 
             data = r.json()
 
-            # Udtræk opslag — API kan returnere forskellige strukturer
+            # Udtræk liste — API kan pakke den forskelligt
             postings = (data.get("JobPositionPostings")
                      or data.get("jobPositionPostings")
                      or data.get("Annoncer")
                      or data.get("Results")
                      or data.get("results")
+                     or data.get("Items")
                      or (data if isinstance(data, list) else []))
 
             if not postings:
-                print(f"  [STAR] Ingen opslag på side {page} — stopper")
+                print(f"  [STAR] Side {page}: tom — nøgler: {list(data.keys()) if isinstance(data, dict) else 'liste'}")
                 break
 
-            total = data.get("TotalResultCount") or data.get("Total") or data.get("total") or total
+            total = (data.get("TotalResultCount") or data.get("Total")
+                  or data.get("total") or total)
 
+            added = 0
             for p in postings:
                 job = parse_star_posting(p)
                 if job["id"] not in seen and job["title"]:
                     seen.add(job["id"])
                     all_jobs.append(job)
+                    added += 1
 
-            print(f"  [STAR] Side {page}: {len(postings)} opslag → {len(all_jobs)} totalt")
+            print(f"  [STAR] Side {page}: {len(postings)} opslag, {added} nye → {len(all_jobs)} totalt")
 
             if len(postings) < page_size:
-                break  # Sidste side
+                break
 
         except Exception as e:
-            print(f"  [STAR] Fejl side {page}: {e}")
+            print(f"  [STAR] Side {page} fejl: {e}")
             break
 
     return all_jobs, None, total or len(all_jobs)
 
 def fetch_star_page(offset=0, search=""):
-    """Wrapper til /api/jobs endpoint (enkelt side)."""
     jobs, err, total = fetch_star_jobs(page_size=20, max_pages=1)
     return jobs, err, total
 
 
-# ─── Adzuna API ───────────────────────────────────────────────────────────────
-
-ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID",  "89154cc5")
-ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "c5a493c6da98b7710733944cf74b9d07")
-
-# Søgetermer der dækker det danske jobmarked bredt
-ADZUNA_SEARCHES = [
-    "",               # Alle job — 5 sider
-    "developer",
-    "designer",
-    "marketing",
-]
-
-# ── Bulk-cache: opdateres max 1 gang i døgnet ─────────────────────────────
-# Gratis Adzuna-plan: ~250 requests/måned → maks 8 requests/dag
+# ── Bulk-cache ────────────────────────────────────────────────────────────────
 _bulk_cache = {"jobs": [], "ts": 0}
 BULK_TTL    = 86400  # 24 timer
 
@@ -274,123 +289,22 @@ def detect_work_mode(title, description):
         return "Hybrid"
     return "Kontor"
 
-def parse_adzuna_job(p):
-    """Parser ét Adzuna job-objekt til vores format."""
-    jid         = str(p.get("id", ""))
-    title       = (p.get("title") or "").strip()
-    company     = (p.get("company", {}) or {}).get("display_name", "Ukendt")
-    loc_data    = p.get("location", {}) or {}
-    location    = loc_data.get("display_name", "Danmark")
-    # Rens lokation: fjern "Denmark, " prefix
-    location    = re.sub(r'^Denmark,\s*', '', location).strip() or "Danmark"
-    description = clean_html(p.get("description") or "")[:1500]
-    salary_min  = p.get("salary_min")
-    salary_max  = p.get("salary_max")
-    salary      = ""
-    if salary_min and salary_max and salary_min > 1000:
-        # Adzuna returnerer årsløn — konvertér til månedlig
-        mo_min = int(salary_min / 12)
-        mo_max = int(salary_max / 12)
-        salary = f"{mo_min:,}–{mo_max:,} kr/md".replace(",", ".")
-    created     = p.get("created") or ""
-    redirect    = p.get("redirect_url") or ""
-    contract    = (p.get("contract_time") or "full_time")
-    job_type    = "Studiejob" if "part" in contract else "Fuldtid"
-    return {
-        "id":          f"az-{jid}",
-        "title":       title,
-        "company":     company,
-        "location":    location,
-        "type":        job_type,
-        "workMode":    detect_work_mode(title, description),
-        "salary":      salary,
-        "description": description,
-        "keywords":    extract_kws(title + " " + description),
-        "posted":      parse_date(created),
-        "deadline":    "",
-        "url":         redirect,
-        "source":      "adzuna.dk",
-        "sourceLabel": "Adzuna",
-        "industry":    get_industry(title, description),
-    }
-
-def fetch_adzuna_page(offset=0, search="", per_page=50):
-    import requests as req
-    page = (offset // per_page) + 1
-    url  = f"https://api.adzuna.com/v1/api/jobs/dk/search/{page}"
-    params = {
-        "app_id":           ADZUNA_APP_ID,
-        "app_key":          ADZUNA_APP_KEY,
-        "results_per_page": per_page,
-        "what":             search or "",
-        "sort_by":          "date",
-        "content-type":     "application/json",
-    }
-    try:
-        r = req.get(url, params=params, timeout=15)
-        if r.status_code != 200:
-            return [], f"Adzuna HTTP {r.status_code}", 0
-        data = r.json()
-    except Exception as e:
-        return [], str(e), 0
-
-    jobs  = [parse_adzuna_job(p) for p in (data.get("results") or []) if p.get("id")]
-    total = data.get("count") or len(jobs)
-    return jobs, None, total
-
 def fetch_bulk_jobs():
-    """
-    Hent job — prioriteret:
-    1. STAR JobAnnonceService (officiel Jobnet, ingen quota, mTLS)
-    2. Adzuna (supplement eller fallback)
-    Caches 24h.
-    """
+    """Hent job fra STAR JobAnnonceService v2. Caches 24h."""
     global _bulk_cache
     now = time.time()
     if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
         print(f"  [Bulk] Cache hit — {len(_bulk_cache['jobs'])} job")
         return _bulk_cache["jobs"]
 
-    import concurrent.futures
-    seen      = set()
-    all_jobs  = []
-    errors    = []
-
-    # ── 1. STAR (primær — officielle Jobnet-opslag, ingen quota) ──────────
     print("  [Bulk] Henter STAR jobannoncer…")
-    star_jobs, star_err, star_total = fetch_star_jobs(page_size=100, max_pages=5)
-    if star_err:
-        errors.append(f"STAR: {star_err}")
-    for job in star_jobs:
-        if job["id"] not in seen:
-            seen.add(job["id"])
-            all_jobs.append(job)
-    print(f"  [Bulk] STAR: {len(star_jobs)} job")
+    all_jobs, star_err, total = fetch_star_jobs(page_size=100, max_pages=10)
+    errors = [star_err] if star_err else []
 
-    # ── 2. Adzuna supplement (4 sider × 50 = 200 job) ─────────────────────
-    def safe_az(page):
-        jobs, err, _ = fetch_adzuna_page((page - 1) * 50, "", per_page=50)
-        if err:
-            errors.append(f"Adzuna s.{page}: {err}")
-            return []
-        return jobs
-
-    print("  [Bulk] Henter Adzuna supplement…")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        for jobs in ex.map(safe_az, [1, 2, 3, 4]):
-            for job in jobs:
-                if job["id"] not in seen:
-                    seen.add(job["id"])
-                    all_jobs.append(job)
-
-    az_count = len(all_jobs) - len(star_jobs)
-    print(f"  [Bulk] Adzuna supplement: {az_count} ekstra job")
-
-    source = "star+adzuna" if star_jobs and az_count > 0 else ("star" if star_jobs else "adzuna")
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
-    print(f"  [Bulk] ✅ {len(all_jobs)} job cached 24h (kilde: {source})")
+    print(f"  [Bulk] ✅ {len(all_jobs)} job cached 24h")
     _bulk_cache.clear()
-    _bulk_cache.update({"jobs": all_jobs, "ts": now, "errors": errors, "source": source})
+    _bulk_cache.update({"jobs": all_jobs, "ts": now, "errors": errors, "source": "star"})
     return all_jobs
 
 
@@ -854,51 +768,35 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── /api/jobs ──────────────────────────────────────────────────────
         if parsed.path == "/api/jobs":
-            qs     = parse_qs(parsed.query)
-            offset = int(qs.get("offset", ["0"])[0])
-            search = qs.get("q", [""])[0]
-
-            # 1. Prøv STAR JobAnnonceService (mTLS — friske danske job)
-            jobs, err, total = fetch_star_page(offset, search)
-            source = "star"
-
-            # 2. Fallback: Adzuna
-            if err or not jobs:
-                if err:
-                    print(f"  [STAR] Fejl: {err} – falder tilbage til Adzuna")
-                jobs, err, total = fetch_adzuna_page(offset, search)
-                source = "adzuna"
-
-            # 3. Fallback: Jobnet browser-scrape
-            if err or not jobs:
-                if err:
-                    print(f"  [Adzuna] Fejl: {err} – prøver Jobnet som fallback")
-                result = fetch_jobnet_page(offset, search)
-                if len(result) == 3:
-                    jobs, err, total = result
-                else:
-                    jobs, err = result; total = len(jobs)
-                source = "jobnet"
-
-            if err and not jobs:
-                self._json({"error": err, "jobs": [], "total": 0}, 502)
-            else:
-                self._json({"jobs": jobs, "total": total or len(jobs), "offset": offset, "source": source})
+            # Returnér fra bulk-cache (STAR-data)
+            jobs = fetch_bulk_jobs()
+            self._json({"jobs": jobs[:20], "total": len(jobs), "source": "star"})
             return
 
         # ── /api/star-test ────────────────────────────────────────────────
         if parsed.path == "/api/star-test":
             session = get_star_session()
             if not session:
-                self._json({"ok": False, "error": "Certifikater mangler — sæt STAR_CERT og STAR_KEY i Railway"})
+                self._json({"ok": False, "error": "Certifikater mangler"})
                 return
-            import requests as req
-            try:
-                url = f"{STAR_BASE}/v2/Jobannonce"
-                r = session.get(url, params={"pageSize": 1, "pageNumber": 1}, timeout=15)
-                self._json({"ok": r.status_code == 200, "status": r.status_code, "body": r.text[:500], "url": url})
-            except Exception as e:
-                self._json({"ok": False, "error": str(e)})
+            results = {}
+            tests = [
+                ("POST", f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer", {"PageSize": 1, "PageNumber": 1}),
+                ("GET",  f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer", None),
+                ("GET",  f"{STAR_BASE}/v2/Jobannonce/GetJobannoncer",  None),
+                ("GET",  f"{STAR_BASE}/v2/Jobannonce",                 None),
+            ]
+            for method, url, body in tests:
+                key = f"{method} {url.split('/')[-1]}"
+                try:
+                    if method == "POST":
+                        r = session.post(url, json=body, timeout=15)
+                    else:
+                        r = session.get(url, params={"pageSize": 1, "pageNumber": 1}, timeout=15)
+                    results[key] = {"status": r.status_code, "preview": r.text[:300]}
+                except Exception as e:
+                    results[key] = {"error": str(e)}
+            self._json(results)
             return
 
         # ── /api/status ───────────────────────────────────────────────────
