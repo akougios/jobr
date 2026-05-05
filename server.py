@@ -134,72 +134,115 @@ def get_star_session():
         print(f"  [STAR] Session-fejl: {e}")
         return None
 
-def fetch_star_page(offset=0, search=""):
-    """Hent job fra STARs JobAnnonceService v2 via mTLS."""
+def parse_star_posting(p):
+    """Konvertér ét STAR-jobopslag til vores standardformat."""
+    jid         = str(p.get("JobPositionPostingIdentifier") or p.get("Id") or p.get("id") or "")
+    title       = (p.get("PositionTitle") or p.get("Title") or p.get("title") or "").strip()
+    company     = (p.get("HiringOrgName") or p.get("Company") or p.get("company") or "Ukendt").strip()
+    city        = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or p.get("City") or ""
+    region      = p.get("WorkPlaceRegionName") or p.get("Region") or ""
+    location    = ", ".join(filter(None, [city, region])) or "Danmark"
+    raw_desc    = (p.get("PresentationAgreement") or p.get("JobPositionPostingDescription")
+                or p.get("Description") or p.get("description") or "")
+    description = clean_html(raw_desc)[:1500]
+    posted_raw  = p.get("PostingCreated") or p.get("Created") or p.get("created") or ""
+    deadline_raw= p.get("LastDateApplication") or p.get("Deadline") or ""
+    abroad      = bool(p.get("WorkPlaceAbroad"))
+    salary      = ""
+    m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
+    if m:
+        salary = f"{m.group(1)}–{m.group(2)} kr/md"
+    url_job = (p.get("JobPostingUrl") or p.get("Url")
+            or f"https://job.jobnet.dk/CV/FindWork/Details/{jid}")
+    return {
+        "id":          f"star-{jid}",
+        "title":       title,
+        "company":     company,
+        "location":    location,
+        "type":        p.get("WorkHours") or p.get("EmploymentType") or "Fuldtid",
+        "workMode":    detect_work_mode(title, description) if not abroad else "Remote",
+        "salary":      salary,
+        "description": description,
+        "keywords":    extract_kws(title + " " + description),
+        "posted":      parse_date(posted_raw),
+        "deadline":    deadline_raw[:10] if deadline_raw else "",
+        "url":         url_job,
+        "source":      "jobnet.dk",
+        "sourceLabel": "Jobnet",
+        "industry":    get_industry(title, description),
+    }
+
+def fetch_star_jobs(page_size=100, max_pages=5):
+    """
+    Hent jobannoncer via STAR JobAnnonceService v2 mTLS.
+    Bruger SoegJobannoncer (søg/filtrer) + GetJobannoncer (hent detaljer).
+    """
     session = get_star_session()
     if not session:
         return [], "STAR ikke konfigureret", 0
-    import requests as req
-    try:
-        # STAR JobAnnonceService v2 endpoint
-        url = f"{STAR_BASE}/v2/Jobannonce"
-        params = {"pageSize": 20, "pageNumber": max(1, offset // 20 + 1)}
-        if search:
-            params["search"] = search
-        print(f"  [STAR] GET {url} offset={offset}")
-        r = session.get(url, params=params, timeout=20)
-        print(f"  [STAR] HTTP {r.status_code}  body[:300]: {r.text[:300]}")
-        if r.status_code != 200:
-            return [], f"STAR HTTP {r.status_code}", 0
-        data = r.json()
-    except Exception as e:
-        return [], f"STAR fejl: {e}", 0
 
-    postings = (data.get("JobPositionPostings")
-             or data.get("jobPositionPostings")
-             or data.get("results")
-             or [])
-    jobs = []
-    for p in postings:
-        jid         = str(p.get("JobPositionPostingIdentifier") or p.get("id") or "")
-        title       = (p.get("PositionTitle") or p.get("title") or "").strip()
-        company     = (p.get("HiringOrgName") or p.get("company") or "Ukendt").strip()
-        city        = p.get("WorkPlaceCity") or p.get("WorkPlaceName") or ""
-        region      = p.get("WorkPlaceRegionName") or ""
-        location    = ", ".join(filter(None, [city, region])) or "Danmark"
-        raw_desc    = (p.get("PresentationAgreement")
-                    or p.get("JobPositionPostingDescription")
-                    or p.get("description") or "")
-        description = clean_html(raw_desc)[:1500]
-        posted_raw  = p.get("PostingCreated") or p.get("created") or ""
-        deadline_raw= p.get("LastDateApplication") or ""
-        abroad      = bool(p.get("WorkPlaceAbroad"))
-        salary      = ""
-        m = re.search(r"(\d[\d.,]+)\s*[-–]\s*(\d[\d.,]+)\s*(kr|DKK)", description, re.I)
-        if m:
-            salary = f"{m.group(1)}–{m.group(2)} kr/md"
-        url_job = (p.get("JobPostingUrl")
-                or f"https://job.jobnet.dk/CV/FindWork/Details/{jid}")
-        jobs.append({
-            "id":          f"star-{jid}",
-            "title":       title,
-            "company":     company,
-            "location":    location,
-            "type":        p.get("WorkHours") or "Fuldtid",
-            "workMode":    "Remote" if abroad else "Kontor",
-            "salary":      salary,
-            "description": description,
-            "keywords":    extract_kws(title + " " + description),
-            "posted":      parse_date(posted_raw),
-            "deadline":    deadline_raw[:10] if deadline_raw else "",
-            "url":         url_job,
-            "source":      "jobnet.dk",
-            "sourceLabel": "Jobnet",
-            "industry":    get_industry(title, description),
-        })
+    all_jobs = []
+    seen     = set()
+    total    = 0
 
-    total = data.get("TotalResultCount") or data.get("total") or len(jobs)
-    return jobs, None, total
+    for page in range(1, max_pages + 1):
+        try:
+            # ── Søg jobannoncer (returnerer ID-liste + metadata) ──────────
+            search_url = f"{STAR_BASE}/v2/Jobannonce/SoegJobannoncer"
+            body = {
+                "PageSize":   page_size,
+                "PageNumber": page,
+                "SortBy":     "PostingCreated",
+                "SortOrder":  "Descending",
+            }
+            print(f"  [STAR] POST SoegJobannoncer side {page}…")
+            r = session.post(search_url, json=body, timeout=30)
+            print(f"  [STAR] HTTP {r.status_code}  body[:200]: {r.text[:200]}")
+
+            if r.status_code != 200:
+                # Prøv GET i stedet (API kan variere)
+                r = session.get(search_url, params={"pageSize": page_size, "pageNumber": page}, timeout=30)
+                print(f"  [STAR] GET fallback HTTP {r.status_code}  body[:200]: {r.text[:200]}")
+                if r.status_code != 200:
+                    break
+
+            data = r.json()
+
+            # Udtræk opslag — API kan returnere forskellige strukturer
+            postings = (data.get("JobPositionPostings")
+                     or data.get("jobPositionPostings")
+                     or data.get("Annoncer")
+                     or data.get("Results")
+                     or data.get("results")
+                     or (data if isinstance(data, list) else []))
+
+            if not postings:
+                print(f"  [STAR] Ingen opslag på side {page} — stopper")
+                break
+
+            total = data.get("TotalResultCount") or data.get("Total") or data.get("total") or total
+
+            for p in postings:
+                job = parse_star_posting(p)
+                if job["id"] not in seen and job["title"]:
+                    seen.add(job["id"])
+                    all_jobs.append(job)
+
+            print(f"  [STAR] Side {page}: {len(postings)} opslag → {len(all_jobs)} totalt")
+
+            if len(postings) < page_size:
+                break  # Sidste side
+
+        except Exception as e:
+            print(f"  [STAR] Fejl side {page}: {e}")
+            break
+
+    return all_jobs, None, total or len(all_jobs)
+
+def fetch_star_page(offset=0, search=""):
+    """Wrapper til /api/jobs endpoint (enkelt side)."""
+    jobs, err, total = fetch_star_jobs(page_size=20, max_pages=1)
+    return jobs, err, total
 
 
 # ─── Adzuna API ───────────────────────────────────────────────────────────────
@@ -296,7 +339,12 @@ def fetch_adzuna_page(offset=0, search="", per_page=50):
     return jobs, None, total
 
 def fetch_bulk_jobs():
-    """Hent ~200 job fra Adzuna (4 sider × 50). Caches 24h. Jobnet fallback."""
+    """
+    Hent job — prioriteret:
+    1. STAR JobAnnonceService (officiel Jobnet, ingen quota, mTLS)
+    2. Adzuna (supplement eller fallback)
+    Caches 24h.
+    """
     global _bulk_cache
     now = time.time()
     if _bulk_cache["jobs"] and now - _bulk_cache["ts"] < BULK_TTL:
@@ -306,19 +354,28 @@ def fetch_bulk_jobs():
     import concurrent.futures
     seen      = set()
     all_jobs  = []
-    az_errors = []
+    errors    = []
 
+    # ── 1. STAR (primær — officielle Jobnet-opslag, ingen quota) ──────────
+    print("  [Bulk] Henter STAR jobannoncer…")
+    star_jobs, star_err, star_total = fetch_star_jobs(page_size=100, max_pages=5)
+    if star_err:
+        errors.append(f"STAR: {star_err}")
+    for job in star_jobs:
+        if job["id"] not in seen:
+            seen.add(job["id"])
+            all_jobs.append(job)
+    print(f"  [Bulk] STAR: {len(star_jobs)} job")
+
+    # ── 2. Adzuna supplement (4 sider × 50 = 200 job) ─────────────────────
     def safe_az(page):
         jobs, err, _ = fetch_adzuna_page((page - 1) * 50, "", per_page=50)
         if err:
-            az_errors.append(f"s.{page}: {err}")
-            print(f"  [Bulk] Adzuna s.{page}: {err}")
+            errors.append(f"Adzuna s.{page}: {err}")
             return []
-        print(f"  [Bulk] Adzuna s.{page} → {len(jobs)} job")
         return jobs
 
-    # 4 sider × 50 job = 200 job, 4 requests per dag
-    print("  [Bulk] Henter Adzuna (4 sider)…")
+    print("  [Bulk] Henter Adzuna supplement…")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         for jobs in ex.map(safe_az, [1, 2, 3, 4]):
             for job in jobs:
@@ -326,23 +383,14 @@ def fetch_bulk_jobs():
                     seen.add(job["id"])
                     all_jobs.append(job)
 
-    # Fallback: Jobnet hvis Adzuna fejler
-    if not all_jobs:
-        print("  [Bulk] Adzuna utilgængelig — prøver Jobnet…")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-            jn_futures = [ex.submit(fetch_jobnet_page, pg * 20) for pg in range(10)]
-            for f in concurrent.futures.as_completed(jn_futures):
-                jn_jobs = f.result()[0] if isinstance(f.result(), tuple) else []
-                for job in jn_jobs:
-                    if job["id"] not in seen:
-                        seen.add(job["id"])
-                        all_jobs.append(job)
+    az_count = len(all_jobs) - len(star_jobs)
+    print(f"  [Bulk] Adzuna supplement: {az_count} ekstra job")
 
-    source = "adzuna" if not az_errors else ("adzuna+jobnet" if all_jobs else "jobnet")
+    source = "star+adzuna" if star_jobs and az_count > 0 else ("star" if star_jobs else "adzuna")
     all_jobs.sort(key=lambda j: j.get("posted", "") or "", reverse=True)
     print(f"  [Bulk] ✅ {len(all_jobs)} job cached 24h (kilde: {source})")
     _bulk_cache.clear()
-    _bulk_cache.update({"jobs": all_jobs, "ts": now, "errors": az_errors, "source": source})
+    _bulk_cache.update({"jobs": all_jobs, "ts": now, "errors": errors, "source": source})
     return all_jobs
 
 
